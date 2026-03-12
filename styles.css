@@ -24,9 +24,17 @@ body {
   display: none !important;
 }
 
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(280px, 400px);
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.55rem 0.85rem;
+}
+
 .header {
-  padding: 1.5rem;
-  text-align: center;
+  padding: 0.5rem;
+  text-align: left;
 }
 
 .header h1 {
@@ -34,13 +42,22 @@ body {
 }
 
 .header p {
-  margin: 0.4rem 0 0;
+  margin: 0.15rem 0 0;
   color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.auth-panel {
+  display: grid;
 }
 
 .auth,
 .session {
-  margin: 0 1rem 1rem;
+  margin: 0;
+}
+
+.auth h2 {
+  margin-top: 0;
 }
 
 .auth-form {
@@ -60,11 +77,76 @@ body {
   margin: 0.5rem 0 0;
 }
 
+.session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding-block: 0.8rem;
+}
+
+.session p {
+  margin: 0;
+}
+
 .layout {
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 1rem;
-  padding: 0 1rem 1rem;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+  padding: 0 0.85rem 0.85rem;
+}
+
+.planner,
+.meals {
+  width: 100%;
+}
+
+.planner {
+  padding: 0.6rem 0.65rem;
+  position: sticky;
+  top: 0.35rem;
+  z-index: 20;
+}
+
+.meals {
+  padding: 0.75rem 0.75rem 0.6rem;
+}
+
+.planner h2,
+.meals h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.planner-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.week-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.week-tab {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #334155;
+}
+
+.week-tab.is-active {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 600;
 }
 
 .card {
@@ -77,14 +159,20 @@ body {
 
 .days-board {
   display: grid;
-  gap: 0.75rem;
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-top: 0.4rem;
+  padding-bottom: 0;
+  align-items: start;
 }
 
 .day-lane {
   display: grid;
-  grid-template-columns: 120px 1fr;
-  align-items: stretch;
-  gap: 0.6rem;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 0.3rem;
+  min-width: 140px;
 }
 
 .day-label {
@@ -92,18 +180,45 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #f8fafc;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0.38rem;
+  font-size: 1.05rem;
+}
+
+.day-name {
+  line-height: 1.1;
+}
+
+.day-date {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.monday-date-input {
+  margin-top: 0.1rem;
+  width: min(132px, 100%);
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 0.14rem 0.45rem;
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: center;
+  background: #fff;
 }
 
 .day-dropzone {
-  min-height: 86px;
+  min-height: 52px;
   border: 2px dashed #cbd5e1;
   border-radius: 12px;
-  padding: 0.5rem;
+  padding: 0.25rem 0.3rem;
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.25rem;
   align-content: flex-start;
 }
 
@@ -117,6 +232,11 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.meals-title-row h2 {
+  margin: 0;
 }
 
 .toggle {
@@ -126,18 +246,34 @@ body {
   font-size: 0.9rem;
 }
 
+#mealSearch {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.46rem 0.62rem;
+  font: inherit;
+  margin: 0 0 0.45rem;
+}
+
 .meal-form {
   display: grid;
-  gap: 0.5rem;
-  margin: 0.8rem 0 1rem;
+  grid-template-columns: minmax(180px, 2fr) minmax(140px, 1.4fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.65rem;
 }
 
 
 .meal-message {
-  min-height: 1.1rem;
+  min-height: 0;
+  grid-column: 1 / -1;
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
+}
+
+.meal-message:empty {
+  display: none;
 }
 
 .meal-message.error {
@@ -161,10 +297,25 @@ body {
 .action,
 #saveConfigBtn {
   border: none;
-  border-radius: 9px;
-  padding: 0.55rem 0.8rem;
+  border-radius: 7px;
+  padding: 0.34rem 0.56rem;
   font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.1;
   cursor: pointer;
+}
+
+.meal-form textarea {
+  min-height: 38px;
+  height: 38px;
+  resize: none;
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+.meal-form button {
+  white-space: nowrap;
+  padding: 0.34rem 0.64rem;
 }
 
 .meal-form button,
@@ -177,21 +328,49 @@ body {
 .meals-list {
   list-style: none;
   margin: 0;
-  padding: 0.7rem;
+  padding: 0.6rem;
   border: 2px dashed #cbd5e1;
   border-radius: 12px;
-  min-height: 220px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  min-height: clamp(320px, 56vh, 760px);
+  column-width: 220px;
+  column-gap: 0.75rem;
+  align-content: start;
 }
 
 .meal-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.6rem;
+  border-radius: 14px;
+  padding: 0.75rem;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.meals-list .meal-card {
+  break-inside: avoid;
+  margin: 0 0 0.8rem;
+  border-color: #d9dde8;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.meals-list .meal-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.meals-list .meal-card:nth-child(4n + 1) {
+  background: #fffbea;
+}
+
+.meals-list .meal-card:nth-child(4n + 2) {
+  background: #eef8ff;
+}
+
+.meals-list .meal-card:nth-child(4n + 3) {
+  background: #f2fce9;
+}
+
+.meals-list .meal-card:nth-child(4n + 4) {
+  background: #fff0f3;
 }
 
 .meal-card[draggable='true'] {
@@ -217,8 +396,14 @@ body {
 
 .meal-actions {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.25rem;
   flex-wrap: wrap;
+}
+
+.meal-actions .action {
+  padding: 0.3rem 0.52rem;
+  font-size: 0.78rem;
+  border-radius: 8px;
 }
 
 .action {
@@ -244,15 +429,39 @@ body {
 }
 
 @media (max-width: 920px) {
-  .layout {
+  .topbar {
     grid-template-columns: 1fr;
   }
 
-  .day-lane {
-    grid-template-columns: 1fr;
+  .header {
+    text-align: center;
   }
 
   .day-label {
-    padding: 0.45rem;
+    padding: 0.4rem;
+  }
+
+  .days-board {
+    grid-template-columns: repeat(7, minmax(128px, 1fr));
+    gap: 0.35rem;
+  }
+
+  .meal-form {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+    margin: 0.55rem 0 0.8rem;
+  }
+
+  .meal-form textarea {
+    height: 44px;
+  }
+
+  .planner-top-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .planner {
+    top: 0;
   }
 }
