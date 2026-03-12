@@ -190,6 +190,15 @@ body {
   font-size: 0.9rem;
 }
 
+#mealSearch {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.46rem 0.62rem;
+  font: inherit;
+  margin: 0 0 0.45rem;
+}
+
 .meal-form {
   display: grid;
   grid-template-columns: minmax(180px, 2fr) minmax(140px, 1.4fr) auto;

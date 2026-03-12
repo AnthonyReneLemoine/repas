@@ -95,6 +95,7 @@ const mealNameInput = document.getElementById('mealName');
 const mealNoteInput = document.getElementById('mealNote');
 const mealMessageEl = document.getElementById('mealMessage');
 const showArchivedInput = document.getElementById('showArchived');
+const mealSearchInput = document.getElementById('mealSearch');
 const configDialog = document.getElementById('configDialog');
 const configForm = document.getElementById('configForm');
 const configInput = document.getElementById('firebaseConfigInput');
@@ -105,6 +106,11 @@ let meals = [];
 let weekPlan = makeEmptyWeek();
 let unsubscribeMeals;
 let unsubscribeWeek;
+const dragState = {
+  mealId: '',
+  fromDay: '',
+  fromList: false,
+};
 
 boot().catch((error) => {
   console.error(error);
@@ -132,6 +138,7 @@ async function boot() {
 function wireEvents() {
   mealForm.addEventListener('submit', onCreateMeal);
   showArchivedInput.addEventListener('change', render);
+  mealSearchInput.addEventListener('input', render);
   authForm.addEventListener('submit', onLogin);
   registerBtn.addEventListener('click', onRegister);
   logoutBtn.addEventListener('click', onLogout);
@@ -139,18 +146,44 @@ function wireEvents() {
   mealsListEl.addEventListener('dragover', (event) => {
     event.preventDefault();
     mealsListEl.classList.add('drag-over');
+
+    if (!dragState.fromList || !dragState.mealId) return;
+    if (mealSearchInput.value.trim()) return;
+
+    const targetCard = event.target.closest('.meal-card');
+    if (!targetCard || targetCard.dataset.mealId === dragState.mealId) return;
+
+    const draggedCard = mealsListEl.querySelector(`.meal-card[data-meal-id="${dragState.mealId}"]`);
+    if (!draggedCard) return;
+
+    const targetRect = targetCard.getBoundingClientRect();
+    const insertBefore = event.clientY < targetRect.top + targetRect.height / 2;
+    mealsListEl.insertBefore(draggedCard, insertBefore ? targetCard : targetCard.nextSibling);
   });
   mealsListEl.addEventListener('dragleave', () => mealsListEl.classList.remove('drag-over'));
   mealsListEl.addEventListener('drop', async (event) => {
     event.preventDefault();
     mealsListEl.classList.remove('drag-over');
 
-    const mealId = event.dataTransfer.getData('mealId');
-    const fromDay = event.dataTransfer.getData('fromDay');
+    const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
+    const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
+
+    if (dragState.fromList && mealId) {
+      if (mealSearchInput.value.trim()) {
+        setMealMessage('Désactive la recherche pour réorganiser les fiches.', true);
+      } else {
+        await saveMealsOrderFromDom();
+        setMealMessage('Ordre des fiches mis à jour.');
+      }
+      resetDragState();
+      return;
+    }
+
     if (!mealId || !fromDay) return;
 
     weekPlan[fromDay] = (weekPlan[fromDay] || []).filter((id) => id !== mealId);
     await saveWeekPlan();
+    resetDragState();
   });
 
   daysBoardEl.addEventListener('dragover', (event) => {
@@ -174,8 +207,8 @@ function wireEvents() {
     lane.classList.remove('drag-over');
     const targetDay = lane.dataset.day;
 
-    const mealId = event.dataTransfer.getData('mealId');
-    const fromDay = event.dataTransfer.getData('fromDay');
+    const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
+    const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
     if (!mealId) return;
 
     if (fromDay) {
@@ -189,6 +222,7 @@ function wireEvents() {
     weekPlan[targetDay] = dayItems;
 
     await saveWeekPlan();
+    resetDragState();
   });
 }
 
@@ -333,6 +367,7 @@ async function onCreateMeal(event) {
       name,
       note,
       archived: false,
+      sortOrder: getNextSortOrder(),
       createdAt: serverTimestamp(),
       ownerUid: auth.currentUser.uid,
     });
@@ -353,7 +388,14 @@ function render() {
 
 function renderMealsList() {
   const showArchived = showArchivedInput.checked;
-  const visibleMeals = meals.filter((meal) => (showArchived ? true : !meal.archived));
+  const searchTerm = normalizeMealName(mealSearchInput.value || '');
+  const visibleMeals = getMealsOrderedBySort()
+    .filter((meal) => (showArchived ? true : !meal.archived))
+    .filter((meal) => {
+      if (!searchTerm) return true;
+      const haystack = normalizeMealName(`${meal.name} ${meal.note || ''}`);
+      return haystack.includes(searchTerm);
+    });
 
   if (!visibleMeals.length) {
     mealsListEl.innerHTML = '<p class="empty">Aucun repas disponible.</p>';
@@ -382,9 +424,14 @@ function renderMealsList() {
 
   mealsListEl.querySelectorAll('.meal-card').forEach((item) => {
     item.addEventListener('dragstart', (event) => {
+      dragState.mealId = item.dataset.mealId || '';
+      dragState.fromDay = '';
+      dragState.fromList = true;
       event.dataTransfer.setData('mealId', item.dataset.mealId);
       event.dataTransfer.setData('fromDay', '');
+      event.dataTransfer.setData('fromList', 'true');
     });
+    item.addEventListener('dragend', resetDragState);
   });
 
   mealsListEl.querySelectorAll('[data-action]').forEach((button) => {
@@ -414,11 +461,51 @@ function renderWeek() {
 
     lane.querySelectorAll('.meal-card').forEach((card) => {
       card.addEventListener('dragstart', (event) => {
+        dragState.mealId = card.dataset.mealId || '';
+        dragState.fromDay = card.dataset.fromDay || '';
+        dragState.fromList = false;
         event.dataTransfer.setData('mealId', card.dataset.mealId);
         event.dataTransfer.setData('fromDay', card.dataset.fromDay || '');
       });
+      card.addEventListener('dragend', resetDragState);
     });
   });
+}
+
+function getMealsOrderedBySort() {
+  return [...meals].sort((a, b) => {
+    const orderA = Number.isFinite(a.sortOrder) ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+    const orderB = Number.isFinite(b.sortOrder) ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+
+    const nameA = (a.name || '').toLowerCase();
+    const nameB = (b.name || '').toLowerCase();
+    return nameA.localeCompare(nameB, 'fr');
+  });
+}
+
+function getNextSortOrder() {
+  const orders = meals.map((meal) => meal.sortOrder).filter((value) => Number.isFinite(value));
+  return orders.length ? Math.max(...orders) + 1 : 0;
+}
+
+async function saveMealsOrderFromDom() {
+  const domIds = [...mealsListEl.querySelectorAll('.meal-card')].map((card) => card.dataset.mealId).filter(Boolean);
+  if (!domIds.length) return;
+
+  const allOrderedIds = getMealsOrderedBySort().map((meal) => meal.id);
+  const remainingIds = allOrderedIds.filter((id) => !domIds.includes(id));
+  const nextIds = [...domIds, ...remainingIds];
+
+  await Promise.all(
+    nextIds.map((mealId, index) => updateDoc(doc(db, 'meals', mealId), { sortOrder: index })),
+  );
+}
+
+function resetDragState() {
+  dragState.mealId = '';
+  dragState.fromDay = '';
+  dragState.fromList = false;
 }
 
 async function onMealAction(event) {
@@ -465,12 +552,18 @@ async function ensureInitialMeals(ownerUid) {
   const missingNames = INITIAL_MEAL_NAMES.filter((name) => !existingNames.has(normalizeMealName(name)));
   if (!missingNames.length) return;
 
+  const existingOrders = existingMeals.docs
+    .map((docSnap) => docSnap.data()?.sortOrder)
+    .filter((value) => Number.isFinite(value));
+  const startOrder = existingOrders.length ? Math.max(...existingOrders) + 1 : 0;
+
   await Promise.all(
-    missingNames.map((name) =>
+    missingNames.map((name, index) =>
       addDoc(mealsRef, {
         name,
         note: '',
         archived: false,
+        sortOrder: startOrder + index,
         createdAt: serverTimestamp(),
         ownerUid,
       }),
