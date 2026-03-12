@@ -48,7 +48,8 @@ python3 -m http.server 4173
 
 Puis ouvre http://localhost:4173.
 
-Au premier lancement, une popup demande la config Firebase JSON.
+Au premier lancement, une popup demande la config Firebase.
+Tu peux coller soit l'objet JSON, soit le bloc JavaScript `const firebaseConfig = { ... }`.
 Elle est stockée dans `localStorage` du navigateur.
 
 ## 3) Déployer sur GitHub Pages

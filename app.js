@@ -395,7 +395,11 @@ function sanitizeWeek(rawWeek) {
 async function ensureFirebaseConfig() {
   const existing = localStorage.getItem(CONFIG_KEY);
   if (existing) {
-    return JSON.parse(existing);
+    try {
+      return validateFirebaseConfig(JSON.parse(existing));
+    } catch {
+      localStorage.removeItem(CONFIG_KEY);
+    }
   }
 
   configDialog.showModal();
@@ -404,16 +408,51 @@ async function ensureFirebaseConfig() {
     throw new Error('Configuration Firebase manquante.');
   }
 
-  const raw = configInput.value.trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error('Le JSON de configuration Firebase est invalide. Recharge la page pour réessayer.');
-  }
-
+  const parsed = parseFirebaseConfigInput(configInput.value.trim());
   localStorage.setItem(CONFIG_KEY, JSON.stringify(parsed));
   return parsed;
+}
+
+function parseFirebaseConfigInput(rawValue) {
+  if (!rawValue) {
+    throw new Error('Configuration Firebase vide.');
+  }
+
+  try {
+    return validateFirebaseConfig(JSON.parse(rawValue));
+  } catch {
+    // Continue avec parsing objet JS
+  }
+
+  const firstBrace = rawValue.indexOf('{');
+  const lastBrace = rawValue.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error('Configuration Firebase invalide : objet introuvable.');
+  }
+
+  const objectLiteral = rawValue.slice(firstBrace, lastBrace + 1);
+  let parsedObject;
+  try {
+    parsedObject = Function(`"use strict"; return (${objectLiteral});`)();
+  } catch {
+    throw new Error('Le format de la configuration Firebase est invalide.');
+  }
+
+  return validateFirebaseConfig(parsedObject);
+}
+
+function validateFirebaseConfig(config) {
+  if (!config || typeof config !== 'object') {
+    throw new Error('Configuration Firebase invalide.');
+  }
+
+  const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
+  const missing = requiredKeys.filter((key) => typeof config[key] !== 'string' || !config[key].trim());
+  if (missing.length) {
+    throw new Error(`Configuration Firebase incomplète : ${missing.join(', ')}`);
+  }
+
+  return config;
 }
 
 function waitDialogClose(dialog) {
