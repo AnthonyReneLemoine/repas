@@ -1,5 +1,12 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+import {
   addDoc,
   collection,
   deleteDoc,
@@ -18,6 +25,17 @@ const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dima
 const WEEK_DOC_ID = 'currentWeek';
 const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
 
+const appLayoutEl = document.getElementById('appLayout');
+const authCardEl = document.getElementById('authCard');
+const sessionCardEl = document.getElementById('sessionCard');
+const authForm = document.getElementById('authForm');
+const authEmailInput = document.getElementById('authEmail');
+const authPasswordInput = document.getElementById('authPassword');
+const registerBtn = document.getElementById('registerBtn');
+const authMessageEl = document.getElementById('authMessage');
+const logoutBtn = document.getElementById('logoutBtn');
+const userEmailEl = document.getElementById('userEmail');
+
 const daysBoardEl = document.getElementById('daysBoard');
 const mealsListEl = document.getElementById('mealsList');
 const mealForm = document.getElementById('mealForm');
@@ -29,8 +47,11 @@ const configForm = document.getElementById('configForm');
 const configInput = document.getElementById('firebaseConfigInput');
 
 let db;
+let auth;
 let meals = [];
 let weekPlan = makeEmptyWeek();
+let unsubscribeMeals;
+let unsubscribeWeek;
 
 boot().catch((error) => {
   console.error(error);
@@ -39,20 +60,28 @@ boot().catch((error) => {
 
 async function boot() {
   renderDayLanes();
+  wireEvents();
+
   const config = await ensureFirebaseConfig();
   const app = initializeApp(config);
   db = getFirestore(app);
+  auth = getAuth(app);
 
-  await ensureWeekDoc();
-  subscribeToMeals();
-  subscribeToWeek();
-
-  wireEvents();
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      await onSignedIn(user);
+      return;
+    }
+    onSignedOut();
+  });
 }
 
 function wireEvents() {
   mealForm.addEventListener('submit', onCreateMeal);
   showArchivedInput.addEventListener('change', render);
+  authForm.addEventListener('submit', onLogin);
+  registerBtn.addEventListener('click', onRegister);
+  logoutBtn.addEventListener('click', onLogout);
 
   mealsListEl.addEventListener('dragover', (event) => {
     event.preventDefault();
@@ -110,6 +139,84 @@ function wireEvents() {
   });
 }
 
+async function onLogin(event) {
+  event.preventDefault();
+  const email = authEmailInput.value.trim();
+  const password = authPasswordInput.value;
+  setAuthMessage('Connexion en cours...');
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    authForm.reset();
+    setAuthMessage('');
+  } catch (error) {
+    setAuthMessage(`Connexion impossible : ${humanizeAuthError(error.code)}`);
+  }
+}
+
+async function onRegister() {
+  const email = authEmailInput.value.trim();
+  const password = authPasswordInput.value;
+  if (!email || !password) {
+    setAuthMessage('Saisis un email et un mot de passe (6 caractères minimum).');
+    return;
+  }
+
+  setAuthMessage('Création du compte...');
+  try {
+    await createUserWithEmailAndPassword(auth, email, password);
+    authForm.reset();
+    setAuthMessage('Compte créé et connecté.');
+  } catch (error) {
+    setAuthMessage(`Création impossible : ${humanizeAuthError(error.code)}`);
+  }
+}
+
+async function onLogout() {
+  await signOut(auth);
+}
+
+async function onSignedIn(user) {
+  userEmailEl.textContent = user.email || 'Utilisateur';
+  authCardEl.classList.add('hidden');
+  sessionCardEl.classList.remove('hidden');
+  appLayoutEl.classList.remove('hidden');
+
+  await ensureWeekDoc();
+  unsubscribeMeals?.();
+  unsubscribeWeek?.();
+  subscribeToMeals();
+  subscribeToWeek();
+}
+
+function onSignedOut() {
+  unsubscribeMeals?.();
+  unsubscribeWeek?.();
+  unsubscribeMeals = undefined;
+  unsubscribeWeek = undefined;
+
+  meals = [];
+  weekPlan = makeEmptyWeek();
+  render();
+
+  appLayoutEl.classList.add('hidden');
+  sessionCardEl.classList.add('hidden');
+  authCardEl.classList.remove('hidden');
+  setAuthMessage('Connecte-toi pour gérer tes repas.');
+}
+
+function setAuthMessage(message) {
+  authMessageEl.textContent = message;
+}
+
+function humanizeAuthError(code = '') {
+  if (code === 'auth/invalid-credential') return 'identifiants invalides.';
+  if (code === 'auth/email-already-in-use') return 'cet email est déjà utilisé.';
+  if (code === 'auth/invalid-email') return 'email invalide.';
+  if (code === 'auth/weak-password') return 'mot de passe trop faible.';
+  return `erreur ${code || 'inconnue'}.`;
+}
+
 function renderDayLanes() {
   daysBoardEl.innerHTML = DAYS.map(
     (day) => `
@@ -123,7 +230,7 @@ function renderDayLanes() {
 
 function subscribeToMeals() {
   const mealsQuery = query(collection(db, 'meals'), orderBy('createdAt', 'desc'));
-  onSnapshot(mealsQuery, (snapshot) => {
+  unsubscribeMeals = onSnapshot(mealsQuery, (snapshot) => {
     meals = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
     render();
   });
@@ -131,7 +238,7 @@ function subscribeToMeals() {
 
 function subscribeToWeek() {
   const weekRef = doc(db, 'weekPlans', WEEK_DOC_ID);
-  onSnapshot(weekRef, (snapshot) => {
+  unsubscribeWeek = onSnapshot(weekRef, (snapshot) => {
     const data = snapshot.data();
     weekPlan = data?.days ? sanitizeWeek(data.days) : makeEmptyWeek();
     render();

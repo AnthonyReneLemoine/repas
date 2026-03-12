@@ -12,7 +12,25 @@
       <p>Planifie tes repas de la semaine en glisser-déposer.</p>
     </header>
 
-    <main class="layout">
+    <section class="auth card" id="authCard">
+      <h2>Connexion</h2>
+      <form id="authForm" class="auth-form">
+        <input id="authEmail" type="email" placeholder="Email" required />
+        <input id="authPassword" type="password" placeholder="Mot de passe" required minlength="6" />
+        <div class="auth-actions">
+          <button type="submit">Se connecter</button>
+          <button id="registerBtn" type="button" class="action">Créer un compte</button>
+        </div>
+      </form>
+      <p id="authMessage" class="auth-message"></p>
+    </section>
+
+    <section class="session card hidden" id="sessionCard">
+      <p>Connecté avec <strong id="userEmail"></strong></p>
+      <button id="logoutBtn" class="action delete" type="button">Se déconnecter</button>
+    </section>
+
+    <main class="layout hidden" id="appLayout">
       <section class="planner card">
         <h2>Semaine</h2>
         <div id="daysBoard" class="days-board"></div>

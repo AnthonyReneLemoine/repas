@@ -20,6 +20,10 @@ body {
   color: var(--text);
 }
 
+.hidden {
+  display: none !important;
+}
+
 .header {
   padding: 1.5rem;
   text-align: center;
@@ -32,6 +36,28 @@ body {
 .header p {
   margin: 0.4rem 0 0;
   color: var(--muted);
+}
+
+.auth,
+.session {
+  margin: 0 1rem 1rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.auth-message {
+  min-height: 1.2rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0;
 }
 
 .layout {
@@ -108,7 +134,8 @@ body {
 
 .meal-form input,
 .meal-form textarea,
-.config-form textarea {
+.config-form textarea,
+.auth-form input {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -117,6 +144,7 @@ body {
 }
 
 .meal-form button,
+.auth-form button[type='submit'],
 .action,
 #saveConfigBtn {
   border: none;
@@ -127,6 +155,7 @@ body {
 }
 
 .meal-form button,
+.auth-form button[type='submit'],
 #saveConfigBtn {
   background: var(--accent);
   color: #fff;
@@ -152,7 +181,7 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-.meal-card[draggable="true"] {
+.meal-card[draggable='true'] {
   cursor: grab;
 }
 
