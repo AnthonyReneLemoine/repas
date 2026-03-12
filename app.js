@@ -24,7 +24,11 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-const WEEK_DOC_ID = 'currentWeek';
+const WEEK_KEYS = ['week1', 'week2'];
+const WEEK_DOC_IDS = {
+  week1: 'currentWeek1',
+  week2: 'currentWeek2',
+};
 const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
 
 const INITIAL_MEAL_NAMES = [
@@ -89,6 +93,8 @@ const logoutBtn = document.getElementById('logoutBtn');
 const userEmailEl = document.getElementById('userEmail');
 
 const daysBoardEl = document.getElementById('daysBoard');
+const weekTabsEl = document.getElementById('weekTabs');
+const resetWeekBtn = document.getElementById('resetWeekBtn');
 const mealsListEl = document.getElementById('mealsList');
 const mealForm = document.getElementById('mealForm');
 const mealNameInput = document.getElementById('mealName');
@@ -104,6 +110,7 @@ let db;
 let auth;
 let meals = [];
 let weekPlan = makeEmptyWeek();
+let activeWeekKey = 'week1';
 let unsubscribeMeals;
 let unsubscribeWeek;
 const dragState = {
@@ -119,6 +126,7 @@ boot().catch((error) => {
 
 async function boot() {
   renderDayLanes();
+  updateWeekTabs();
   wireEvents();
 
   const config = await ensureFirebaseConfig();
@@ -142,6 +150,8 @@ function wireEvents() {
   authForm.addEventListener('submit', onLogin);
   registerBtn.addEventListener('click', onRegister);
   logoutBtn.addEventListener('click', onLogout);
+  weekTabsEl.addEventListener('click', onWeekTabClick);
+  resetWeekBtn.addEventListener('click', onResetWeekClick);
 
   mealsListEl.addEventListener('dragover', (event) => {
     event.preventDefault();
@@ -263,13 +273,33 @@ async function onLogout() {
   await signOut(auth);
 }
 
+async function onWeekTabClick(event) {
+  const target = event.target.closest('.week-tab');
+  if (!target) return;
+  const weekKey = target.dataset.week;
+  if (!WEEK_KEYS.includes(weekKey)) return;
+
+  await setActiveWeek(weekKey);
+}
+
+async function onResetWeekClick() {
+  if (!auth?.currentUser) return;
+  const label = activeWeekKey === 'week1' ? 'Semaine 1' : 'Semaine 2';
+  const ok = confirm(`Effacer toutes les fiches planifiées de ${label} ?`);
+  if (!ok) return;
+
+  weekPlan = makeEmptyWeek();
+  await saveWeekPlan();
+  setMealMessage(`${label} réinitialisée.`);
+}
+
 async function onSignedIn(user) {
   userEmailEl.textContent = user.email || 'Utilisateur';
   authCardEl.classList.add('hidden');
   sessionCardEl.classList.remove('hidden');
   appLayoutEl.classList.remove('hidden');
 
-  await ensureWeekDoc();
+  await ensureWeekDocs();
   await ensureInitialMeals(user.uid);
   unsubscribeMeals?.();
   unsubscribeWeek?.();
@@ -285,6 +315,8 @@ function onSignedOut() {
 
   meals = [];
   weekPlan = makeEmptyWeek();
+  activeWeekKey = 'week1';
+  updateWeekTabs();
   render();
 
   appLayoutEl.classList.add('hidden');
@@ -329,6 +361,30 @@ function renderDayLanes() {
   ).join('');
 }
 
+function updateWeekTabs() {
+  weekTabsEl.querySelectorAll('.week-tab').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.week === activeWeekKey);
+  });
+}
+
+function getActiveWeekDocId() {
+  return WEEK_DOC_IDS[activeWeekKey] || WEEK_DOC_IDS.week1;
+}
+
+async function setActiveWeek(weekKey) {
+  if (!WEEK_KEYS.includes(weekKey) || weekKey === activeWeekKey) return;
+  activeWeekKey = weekKey;
+  updateWeekTabs();
+
+  weekPlan = makeEmptyWeek();
+  renderWeek();
+
+  if (!auth?.currentUser) return;
+
+  unsubscribeWeek?.();
+  subscribeToWeek();
+}
+
 function subscribeToMeals() {
   const mealsQuery = query(collection(db, 'meals'), orderBy('createdAt', 'desc'));
   unsubscribeMeals = onSnapshot(mealsQuery, (snapshot) => {
@@ -338,7 +394,7 @@ function subscribeToMeals() {
 }
 
 function subscribeToWeek() {
-  const weekRef = doc(db, 'weekPlans', WEEK_DOC_ID);
+  const weekRef = doc(db, 'weekPlans', getActiveWeekDocId());
   unsubscribeWeek = onSnapshot(weekRef, (snapshot) => {
     const data = snapshot.data();
     weekPlan = data?.days ? sanitizeWeek(data.days) : makeEmptyWeek();
@@ -579,16 +635,20 @@ function normalizeMealName(name) {
     .trim();
 }
 
-async function ensureWeekDoc() {
-  const weekRef = doc(db, 'weekPlans', WEEK_DOC_ID);
-  const snap = await getDoc(weekRef);
-  if (!snap.exists()) {
-    await setDoc(weekRef, { days: makeEmptyWeek() });
-  }
+async function ensureWeekDocs() {
+  await Promise.all(
+    WEEK_KEYS.map(async (weekKey) => {
+      const weekRef = doc(db, 'weekPlans', WEEK_DOC_IDS[weekKey]);
+      const snap = await getDoc(weekRef);
+      if (!snap.exists()) {
+        await setDoc(weekRef, { days: makeEmptyWeek() });
+      }
+    }),
+  );
 }
 
 async function saveWeekPlan() {
-  await setDoc(doc(db, 'weekPlans', WEEK_DOC_ID), { days: sanitizeWeek(weekPlan) }, { merge: true });
+  await setDoc(doc(db, 'weekPlans', getActiveWeekDocId()), { days: sanitizeWeek(weekPlan) }, { merge: true });
 }
 
 function makeEmptyWeek() {

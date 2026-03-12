@@ -118,6 +118,37 @@ body {
   font-size: 1.25rem;
 }
 
+.planner-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.week-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.week-tab {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #334155;
+}
+
+.week-tab.is-active {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -398,6 +429,11 @@ body {
 
   .meal-form textarea {
     height: 44px;
+  }
+
+  .planner-top-row {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .planner {

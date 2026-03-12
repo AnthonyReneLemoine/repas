@@ -36,7 +36,14 @@
 
     <main class="layout hidden" id="appLayout">
       <section class="planner card">
-        <h2>Semaine</h2>
+        <div class="planner-top-row">
+          <h2>Planning</h2>
+          <button id="resetWeekBtn" class="action delete" type="button">Reset semaine</button>
+        </div>
+        <div id="weekTabs" class="week-tabs">
+          <button type="button" class="week-tab is-active" data-week="week1">Semaine 1</button>
+          <button type="button" class="week-tab" data-week="week2">Semaine 2</button>
+        </div>
         <div id="daysBoard" class="days-board"></div>
       </section>
 
