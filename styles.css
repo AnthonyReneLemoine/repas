@@ -62,7 +62,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr 2fr;
   gap: 1rem;
   padding: 0 1rem 1rem;
 }
@@ -181,17 +181,45 @@ body {
   border: 2px dashed #cbd5e1;
   border-radius: 12px;
   min-height: 220px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  column-width: 220px;
+  column-gap: 0.8rem;
+  align-content: start;
 }
 
 .meal-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.6rem;
+  border-radius: 14px;
+  padding: 0.75rem;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.meals-list .meal-card {
+  break-inside: avoid;
+  margin: 0 0 0.8rem;
+  border-color: #d9dde8;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.meals-list .meal-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.meals-list .meal-card:nth-child(4n + 1) {
+  background: #fffbea;
+}
+
+.meals-list .meal-card:nth-child(4n + 2) {
+  background: #eef8ff;
+}
+
+.meals-list .meal-card:nth-child(4n + 3) {
+  background: #f2fce9;
+}
+
+.meals-list .meal-card:nth-child(4n + 4) {
+  background: #fff0f3;
 }
 
 .meal-card[draggable='true'] {
