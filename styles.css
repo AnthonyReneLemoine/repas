@@ -160,6 +160,11 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.meals-title-row h2 {
+  margin: 0;
 }
 
 .toggle {
@@ -171,16 +176,23 @@ body {
 
 .meal-form {
   display: grid;
-  gap: 0.5rem;
-  margin: 0.8rem 0 1rem;
+  grid-template-columns: minmax(180px, 2fr) minmax(140px, 1.4fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.65rem;
 }
 
 
 .meal-message {
-  min-height: 1.1rem;
+  min-height: 0;
+  grid-column: 1 / -1;
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
+}
+
+.meal-message:empty {
+  display: none;
 }
 
 .meal-message.error {
@@ -208,6 +220,19 @@ body {
   padding: 0.55rem 0.8rem;
   font-weight: 600;
   cursor: pointer;
+}
+
+.meal-form textarea {
+  min-height: 38px;
+  height: 38px;
+  resize: none;
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+.meal-form button {
+  white-space: nowrap;
+  padding: 0.52rem 0.9rem;
 }
 
 .meal-form button,
@@ -330,5 +355,15 @@ body {
   .days-board {
     grid-template-columns: repeat(7, minmax(145px, 1fr));
     gap: 0.45rem;
+  }
+
+  .meal-form {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+    margin: 0.55rem 0 0.8rem;
+  }
+
+  .meal-form textarea {
+    height: 44px;
   }
 }
