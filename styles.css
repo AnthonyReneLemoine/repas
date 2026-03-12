@@ -232,9 +232,11 @@ body {
 .action,
 #saveConfigBtn {
   border: none;
-  border-radius: 9px;
-  padding: 0.55rem 0.8rem;
+  border-radius: 7px;
+  padding: 0.34rem 0.56rem;
   font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.1;
   cursor: pointer;
 }
 
@@ -248,7 +250,7 @@ body {
 
 .meal-form button {
   white-space: nowrap;
-  padding: 0.52rem 0.9rem;
+  padding: 0.34rem 0.64rem;
 }
 
 .meal-form button,
@@ -329,8 +331,14 @@ body {
 
 .meal-actions {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.25rem;
   flex-wrap: wrap;
+}
+
+.meal-actions .action {
+  padding: 0.3rem 0.52rem;
+  font-size: 0.78rem;
+  border-radius: 8px;
 }
 
 .action {
