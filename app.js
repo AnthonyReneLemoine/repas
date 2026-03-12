@@ -453,11 +453,20 @@ async function onMealAction(event) {
 
 async function ensureInitialMeals(ownerUid) {
   const mealsRef = collection(db, 'meals');
-  const existingMeals = await getDocs(query(mealsRef, limit(1)));
-  if (!existingMeals.empty) return;
+  const existingMeals = await getDocs(query(mealsRef, limit(300)));
+
+  const existingNames = new Set(
+    existingMeals.docs
+      .map((docSnap) => docSnap.data()?.name)
+      .filter((name) => typeof name === 'string')
+      .map((name) => normalizeMealName(name)),
+  );
+
+  const missingNames = INITIAL_MEAL_NAMES.filter((name) => !existingNames.has(normalizeMealName(name)));
+  if (!missingNames.length) return;
 
   await Promise.all(
-    INITIAL_MEAL_NAMES.map((name) =>
+    missingNames.map((name) =>
       addDoc(mealsRef, {
         name,
         note: '',
@@ -467,6 +476,14 @@ async function ensureInitialMeals(ownerUid) {
       }),
     ),
   );
+}
+
+function normalizeMealName(name) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 async function ensureWeekDoc() {
