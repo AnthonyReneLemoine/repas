@@ -12,7 +12,9 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -22,8 +24,62 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-const WEEK_DOC_ID = 'currentWeek';
+const WEEK_KEYS = ['week1', 'week2'];
+const WEEK_DOC_IDS = {
+  week1: 'currentWeek1',
+  week2: 'currentWeek2',
+};
 const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
+
+const INITIAL_MEAL_NAMES = [
+  'fondue de poireau',
+  'tarte aux poireaux',
+  'Raclette',
+  'moule au curry',
+  'salade',
+  'risotto de quinoa et courgettes',
+  'risotto + blanc de poulet',
+  'Soupe de tomate',
+  'soupe de légumes',
+  'Pizza',
+  'panini',
+  'quiche marie',
+  'pesto',
+  'Œufs au plat',
+  'oeufs pochés + frites',
+  'Omelette',
+  'Couscous',
+  'ratatouille',
+  'tomates provencales + haricot + surimi',
+  'lasagnes de courgettes sauce tomate',
+  'gratin dauphinois',
+  'gratin de choux fleur',
+  'Purée de pommes de terre',
+  'purée de patates douces',
+  'Saumon au micro onde',
+  'St-Jacques',
+  'courgettes sautées au coco',
+  'bowl hawaien',
+  'wok de nouilles aux crevettes',
+  'Croque-monsieur',
+  'crêpes',
+  'Galette de blé noir',
+  'Sushis',
+  'riz tika masala',
+  'Indien',
+  'valentino',
+  'mache tomate chevre oeuf huile',
+  'Nouilles au beurre',
+  'burger',
+  'Ravioli',
+  'Riz à la sénégalaise',
+  'soupe de poisson',
+  'riz thon tabasco',
+  'escargots',
+  'wrap',
+  'boulette de courgette',
+  'gauffres',
+];
 
 const appLayoutEl = document.getElementById('appLayout');
 const authCardEl = document.getElementById('authCard');
@@ -37,12 +93,15 @@ const logoutBtn = document.getElementById('logoutBtn');
 const userEmailEl = document.getElementById('userEmail');
 
 const daysBoardEl = document.getElementById('daysBoard');
+const weekTabsEl = document.getElementById('weekTabs');
+const resetWeekBtn = document.getElementById('resetWeekBtn');
 const mealsListEl = document.getElementById('mealsList');
 const mealForm = document.getElementById('mealForm');
 const mealNameInput = document.getElementById('mealName');
 const mealNoteInput = document.getElementById('mealNote');
 const mealMessageEl = document.getElementById('mealMessage');
 const showArchivedInput = document.getElementById('showArchived');
+const mealSearchInput = document.getElementById('mealSearch');
 const configDialog = document.getElementById('configDialog');
 const configForm = document.getElementById('configForm');
 const configInput = document.getElementById('firebaseConfigInput');
@@ -51,8 +110,14 @@ let db;
 let auth;
 let meals = [];
 let weekPlan = makeEmptyWeek();
+let activeWeekKey = 'week1';
 let unsubscribeMeals;
 let unsubscribeWeek;
+const dragState = {
+  mealId: '',
+  fromDay: '',
+  fromList: false,
+};
 
 boot().catch((error) => {
   console.error(error);
@@ -61,6 +126,7 @@ boot().catch((error) => {
 
 async function boot() {
   renderDayLanes();
+  updateWeekTabs();
   wireEvents();
 
   const config = await ensureFirebaseConfig();
@@ -80,25 +146,54 @@ async function boot() {
 function wireEvents() {
   mealForm.addEventListener('submit', onCreateMeal);
   showArchivedInput.addEventListener('change', render);
+  mealSearchInput.addEventListener('input', render);
   authForm.addEventListener('submit', onLogin);
   registerBtn.addEventListener('click', onRegister);
   logoutBtn.addEventListener('click', onLogout);
+  weekTabsEl.addEventListener('click', onWeekTabClick);
+  resetWeekBtn.addEventListener('click', onResetWeekClick);
 
   mealsListEl.addEventListener('dragover', (event) => {
     event.preventDefault();
     mealsListEl.classList.add('drag-over');
+
+    if (!dragState.fromList || !dragState.mealId) return;
+    if (mealSearchInput.value.trim()) return;
+
+    const targetCard = event.target.closest('.meal-card');
+    if (!targetCard || targetCard.dataset.mealId === dragState.mealId) return;
+
+    const draggedCard = mealsListEl.querySelector(`.meal-card[data-meal-id="${dragState.mealId}"]`);
+    if (!draggedCard) return;
+
+    const targetRect = targetCard.getBoundingClientRect();
+    const insertBefore = event.clientY < targetRect.top + targetRect.height / 2;
+    mealsListEl.insertBefore(draggedCard, insertBefore ? targetCard : targetCard.nextSibling);
   });
   mealsListEl.addEventListener('dragleave', () => mealsListEl.classList.remove('drag-over'));
   mealsListEl.addEventListener('drop', async (event) => {
     event.preventDefault();
     mealsListEl.classList.remove('drag-over');
 
-    const mealId = event.dataTransfer.getData('mealId');
-    const fromDay = event.dataTransfer.getData('fromDay');
+    const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
+    const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
+
+    if (dragState.fromList && mealId) {
+      if (mealSearchInput.value.trim()) {
+        setMealMessage('Désactive la recherche pour réorganiser les fiches.', true);
+      } else {
+        await saveMealsOrderFromDom();
+        setMealMessage('Ordre des fiches mis à jour.');
+      }
+      resetDragState();
+      return;
+    }
+
     if (!mealId || !fromDay) return;
 
     weekPlan[fromDay] = (weekPlan[fromDay] || []).filter((id) => id !== mealId);
     await saveWeekPlan();
+    resetDragState();
   });
 
   daysBoardEl.addEventListener('dragover', (event) => {
@@ -122,8 +217,8 @@ function wireEvents() {
     lane.classList.remove('drag-over');
     const targetDay = lane.dataset.day;
 
-    const mealId = event.dataTransfer.getData('mealId');
-    const fromDay = event.dataTransfer.getData('fromDay');
+    const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
+    const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
     if (!mealId) return;
 
     if (fromDay) {
@@ -137,6 +232,7 @@ function wireEvents() {
     weekPlan[targetDay] = dayItems;
 
     await saveWeekPlan();
+    resetDragState();
   });
 }
 
@@ -177,13 +273,34 @@ async function onLogout() {
   await signOut(auth);
 }
 
+async function onWeekTabClick(event) {
+  const target = event.target.closest('.week-tab');
+  if (!target) return;
+  const weekKey = target.dataset.week;
+  if (!WEEK_KEYS.includes(weekKey)) return;
+
+  await setActiveWeek(weekKey);
+}
+
+async function onResetWeekClick() {
+  if (!auth?.currentUser) return;
+  const label = activeWeekKey === 'week1' ? 'Semaine 1' : 'Semaine 2';
+  const ok = confirm(`Effacer toutes les fiches planifiées de ${label} ?`);
+  if (!ok) return;
+
+  weekPlan = makeEmptyWeek();
+  await saveWeekPlan();
+  setMealMessage(`${label} réinitialisée.`);
+}
+
 async function onSignedIn(user) {
   userEmailEl.textContent = user.email || 'Utilisateur';
   authCardEl.classList.add('hidden');
   sessionCardEl.classList.remove('hidden');
   appLayoutEl.classList.remove('hidden');
 
-  await ensureWeekDoc();
+  await ensureWeekDocs();
+  await ensureInitialMeals(user.uid);
   unsubscribeMeals?.();
   unsubscribeWeek?.();
   subscribeToMeals();
@@ -198,6 +315,8 @@ function onSignedOut() {
 
   meals = [];
   weekPlan = makeEmptyWeek();
+  activeWeekKey = 'week1';
+  updateWeekTabs();
   render();
 
   appLayoutEl.classList.add('hidden');
@@ -242,6 +361,30 @@ function renderDayLanes() {
   ).join('');
 }
 
+function updateWeekTabs() {
+  weekTabsEl.querySelectorAll('.week-tab').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.week === activeWeekKey);
+  });
+}
+
+function getActiveWeekDocId() {
+  return WEEK_DOC_IDS[activeWeekKey] || WEEK_DOC_IDS.week1;
+}
+
+async function setActiveWeek(weekKey) {
+  if (!WEEK_KEYS.includes(weekKey) || weekKey === activeWeekKey) return;
+  activeWeekKey = weekKey;
+  updateWeekTabs();
+
+  weekPlan = makeEmptyWeek();
+  renderWeek();
+
+  if (!auth?.currentUser) return;
+
+  unsubscribeWeek?.();
+  subscribeToWeek();
+}
+
 function subscribeToMeals() {
   const mealsQuery = query(collection(db, 'meals'), orderBy('createdAt', 'desc'));
   unsubscribeMeals = onSnapshot(mealsQuery, (snapshot) => {
@@ -251,7 +394,7 @@ function subscribeToMeals() {
 }
 
 function subscribeToWeek() {
-  const weekRef = doc(db, 'weekPlans', WEEK_DOC_ID);
+  const weekRef = doc(db, 'weekPlans', getActiveWeekDocId());
   unsubscribeWeek = onSnapshot(weekRef, (snapshot) => {
     const data = snapshot.data();
     weekPlan = data?.days ? sanitizeWeek(data.days) : makeEmptyWeek();
@@ -280,6 +423,7 @@ async function onCreateMeal(event) {
       name,
       note,
       archived: false,
+      sortOrder: getNextSortOrder(),
       createdAt: serverTimestamp(),
       ownerUid: auth.currentUser.uid,
     });
@@ -300,7 +444,14 @@ function render() {
 
 function renderMealsList() {
   const showArchived = showArchivedInput.checked;
-  const visibleMeals = meals.filter((meal) => (showArchived ? true : !meal.archived));
+  const searchTerm = normalizeMealName(mealSearchInput.value || '');
+  const visibleMeals = getMealsOrderedBySort()
+    .filter((meal) => (showArchived ? true : !meal.archived))
+    .filter((meal) => {
+      if (!searchTerm) return true;
+      const haystack = normalizeMealName(`${meal.name} ${meal.note || ''}`);
+      return haystack.includes(searchTerm);
+    });
 
   if (!visibleMeals.length) {
     mealsListEl.innerHTML = '<p class="empty">Aucun repas disponible.</p>';
@@ -329,9 +480,14 @@ function renderMealsList() {
 
   mealsListEl.querySelectorAll('.meal-card').forEach((item) => {
     item.addEventListener('dragstart', (event) => {
+      dragState.mealId = item.dataset.mealId || '';
+      dragState.fromDay = '';
+      dragState.fromList = true;
       event.dataTransfer.setData('mealId', item.dataset.mealId);
       event.dataTransfer.setData('fromDay', '');
+      event.dataTransfer.setData('fromList', 'true');
     });
+    item.addEventListener('dragend', resetDragState);
   });
 
   mealsListEl.querySelectorAll('[data-action]').forEach((button) => {
@@ -361,11 +517,51 @@ function renderWeek() {
 
     lane.querySelectorAll('.meal-card').forEach((card) => {
       card.addEventListener('dragstart', (event) => {
+        dragState.mealId = card.dataset.mealId || '';
+        dragState.fromDay = card.dataset.fromDay || '';
+        dragState.fromList = false;
         event.dataTransfer.setData('mealId', card.dataset.mealId);
         event.dataTransfer.setData('fromDay', card.dataset.fromDay || '');
       });
+      card.addEventListener('dragend', resetDragState);
     });
   });
+}
+
+function getMealsOrderedBySort() {
+  return [...meals].sort((a, b) => {
+    const orderA = Number.isFinite(a.sortOrder) ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+    const orderB = Number.isFinite(b.sortOrder) ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+
+    const nameA = (a.name || '').toLowerCase();
+    const nameB = (b.name || '').toLowerCase();
+    return nameA.localeCompare(nameB, 'fr');
+  });
+}
+
+function getNextSortOrder() {
+  const orders = meals.map((meal) => meal.sortOrder).filter((value) => Number.isFinite(value));
+  return orders.length ? Math.max(...orders) + 1 : 0;
+}
+
+async function saveMealsOrderFromDom() {
+  const domIds = [...mealsListEl.querySelectorAll('.meal-card')].map((card) => card.dataset.mealId).filter(Boolean);
+  if (!domIds.length) return;
+
+  const allOrderedIds = getMealsOrderedBySort().map((meal) => meal.id);
+  const remainingIds = allOrderedIds.filter((id) => !domIds.includes(id));
+  const nextIds = [...domIds, ...remainingIds];
+
+  await Promise.all(
+    nextIds.map((mealId, index) => updateDoc(doc(db, 'meals', mealId), { sortOrder: index })),
+  );
+}
+
+function resetDragState() {
+  dragState.mealId = '';
+  dragState.fromDay = '';
+  dragState.fromList = false;
 }
 
 async function onMealAction(event) {
@@ -398,16 +594,61 @@ async function onMealAction(event) {
   }
 }
 
-async function ensureWeekDoc() {
-  const weekRef = doc(db, 'weekPlans', WEEK_DOC_ID);
-  const snap = await getDoc(weekRef);
-  if (!snap.exists()) {
-    await setDoc(weekRef, { days: makeEmptyWeek() });
-  }
+async function ensureInitialMeals(ownerUid) {
+  const mealsRef = collection(db, 'meals');
+  const existingMeals = await getDocs(query(mealsRef, limit(300)));
+
+  const existingNames = new Set(
+    existingMeals.docs
+      .map((docSnap) => docSnap.data()?.name)
+      .filter((name) => typeof name === 'string')
+      .map((name) => normalizeMealName(name)),
+  );
+
+  const missingNames = INITIAL_MEAL_NAMES.filter((name) => !existingNames.has(normalizeMealName(name)));
+  if (!missingNames.length) return;
+
+  const existingOrders = existingMeals.docs
+    .map((docSnap) => docSnap.data()?.sortOrder)
+    .filter((value) => Number.isFinite(value));
+  const startOrder = existingOrders.length ? Math.max(...existingOrders) + 1 : 0;
+
+  await Promise.all(
+    missingNames.map((name, index) =>
+      addDoc(mealsRef, {
+        name,
+        note: '',
+        archived: false,
+        sortOrder: startOrder + index,
+        createdAt: serverTimestamp(),
+        ownerUid,
+      }),
+    ),
+  );
+}
+
+function normalizeMealName(name) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+async function ensureWeekDocs() {
+  await Promise.all(
+    WEEK_KEYS.map(async (weekKey) => {
+      const weekRef = doc(db, 'weekPlans', WEEK_DOC_IDS[weekKey]);
+      const snap = await getDoc(weekRef);
+      if (!snap.exists()) {
+        await setDoc(weekRef, { days: makeEmptyWeek() });
+      }
+    }),
+  );
 }
 
 async function saveWeekPlan() {
-  await setDoc(doc(db, 'weekPlans', WEEK_DOC_ID), { days: sanitizeWeek(weekPlan) }, { merge: true });
+  await setDoc(doc(db, 'weekPlans', getActiveWeekDocId()), { days: sanitizeWeek(weekPlan) }, { merge: true });
 }
 
 function makeEmptyWeek() {
