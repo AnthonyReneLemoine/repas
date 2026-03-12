@@ -103,6 +103,9 @@ body {
 
 .planner {
   padding: 0.6rem 0.65rem;
+  position: sticky;
+  top: 0.35rem;
+  z-index: 20;
 }
 
 .meals {
@@ -378,5 +381,9 @@ body {
 
   .meal-form textarea {
     height: 44px;
+  }
+
+  .planner {
+    top: 0;
   }
 }
