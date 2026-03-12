@@ -41,6 +41,7 @@ const mealsListEl = document.getElementById('mealsList');
 const mealForm = document.getElementById('mealForm');
 const mealNameInput = document.getElementById('mealName');
 const mealNoteInput = document.getElementById('mealNote');
+const mealMessageEl = document.getElementById('mealMessage');
 const showArchivedInput = document.getElementById('showArchived');
 const configDialog = document.getElementById('configDialog');
 const configForm = document.getElementById('configForm');
@@ -203,10 +204,23 @@ function onSignedOut() {
   sessionCardEl.classList.add('hidden');
   authCardEl.classList.remove('hidden');
   setAuthMessage('Connecte-toi pour gérer tes repas.');
+  setMealMessage('');
 }
 
 function setAuthMessage(message) {
   authMessageEl.textContent = message;
+}
+
+function setMealMessage(message, isError = false) {
+  mealMessageEl.textContent = message;
+  mealMessageEl.classList.toggle('error', Boolean(isError));
+}
+
+function humanizeFirestoreError(code = '') {
+  if (code === 'permission-denied') return 'droits insuffisants (vérifie les règles Firestore).';
+  if (code === 'unauthenticated') return 'utilisateur non authentifié.';
+  if (code === 'unavailable') return 'service temporairement indisponible.';
+  return `erreur ${code || 'inconnue'}.`;
 }
 
 function humanizeAuthError(code = '') {
@@ -247,19 +261,36 @@ function subscribeToWeek() {
 
 async function onCreateMeal(event) {
   event.preventDefault();
+
+  if (!auth?.currentUser) {
+    setMealMessage('Tu dois être connecté pour ajouter un repas.', true);
+    return;
+  }
+
   const name = mealNameInput.value.trim();
   const note = mealNoteInput.value.trim();
-  if (!name) return;
+  if (!name) {
+    setMealMessage('Le nom du repas est obligatoire.', true);
+    return;
+  }
 
-  await addDoc(collection(db, 'meals'), {
-    name,
-    note,
-    archived: false,
-    createdAt: serverTimestamp(),
-  });
+  setMealMessage('Ajout en cours...');
+  try {
+    await addDoc(collection(db, 'meals'), {
+      name,
+      note,
+      archived: false,
+      createdAt: serverTimestamp(),
+      ownerUid: auth.currentUser.uid,
+    });
 
-  mealForm.reset();
-  mealNameInput.focus();
+    mealForm.reset();
+    mealNameInput.focus();
+    setMealMessage('Repas ajouté ✅');
+  } catch (error) {
+    console.error(error);
+    setMealMessage(`Ajout impossible : ${humanizeFirestoreError(error.code)}`, true);
+  }
 }
 
 function render() {

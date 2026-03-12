@@ -78,3 +78,8 @@ L'app est ensuite servie en statique.
   "Mardi": ["mealId2", "mealId3"]
 }
 ```
+
+
+## Dépannage rapide
+
+- Si le bouton **Ajouter** ne fait rien, vérifie que tu es bien connecté, et que les règles Firestore autorisent l'écriture pour un utilisateur authentifié (`request.auth != null`).
