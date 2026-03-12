@@ -12,7 +12,9 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -24,6 +26,56 @@ import {
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 const WEEK_DOC_ID = 'currentWeek';
 const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
+
+const INITIAL_MEAL_NAMES = [
+  'fondue de poireau',
+  'tarte aux poireaux',
+  'Raclette',
+  'moule au curry',
+  'salade',
+  'risotto de quinoa et courgettes',
+  'risotto + blanc de poulet',
+  'Soupe de tomate',
+  'soupe de légumes',
+  'Pizza',
+  'panini',
+  'quiche marie',
+  'pesto',
+  'Œufs au plat',
+  'oeufs pochés + frites',
+  'Omelette',
+  'Couscous',
+  'ratatouille',
+  'tomates provencales + haricot + surimi',
+  'lasagnes de courgettes sauce tomate',
+  'gratin dauphinois',
+  'gratin de choux fleur',
+  'Purée de pommes de terre',
+  'purée de patates douces',
+  'Saumon au micro onde',
+  'St-Jacques',
+  'courgettes sautées au coco',
+  'bowl hawaien',
+  'wok de nouilles aux crevettes',
+  'Croque-monsieur',
+  'crêpes',
+  'Galette de blé noir',
+  'Sushis',
+  'riz tika masala',
+  'Indien',
+  'valentino',
+  'mache tomate chevre oeuf huile',
+  'Nouilles au beurre',
+  'burger',
+  'Ravioli',
+  'Riz à la sénégalaise',
+  'soupe de poisson',
+  'riz thon tabasco',
+  'escargots',
+  'wrap',
+  'boulette de courgette',
+  'gauffres',
+];
 
 const appLayoutEl = document.getElementById('appLayout');
 const authCardEl = document.getElementById('authCard');
@@ -184,6 +236,7 @@ async function onSignedIn(user) {
   appLayoutEl.classList.remove('hidden');
 
   await ensureWeekDoc();
+  await ensureInitialMeals(user.uid);
   unsubscribeMeals?.();
   unsubscribeWeek?.();
   subscribeToMeals();
@@ -396,6 +449,24 @@ async function onMealAction(event) {
     });
     await saveWeekPlan();
   }
+}
+
+async function ensureInitialMeals(ownerUid) {
+  const mealsRef = collection(db, 'meals');
+  const existingMeals = await getDocs(query(mealsRef, limit(1)));
+  if (!existingMeals.empty) return;
+
+  await Promise.all(
+    INITIAL_MEAL_NAMES.map((name) =>
+      addDoc(mealsRef, {
+        name,
+        note: '',
+        archived: false,
+        createdAt: serverTimestamp(),
+        ownerUid,
+      }),
+    ),
+  );
 }
 
 async function ensureWeekDoc() {
