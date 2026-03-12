@@ -7,28 +7,32 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="header">
-      <h1>🍽️ Tableau des dîners</h1>
-      <p>Planifie tes repas de la semaine en glisser-déposer.</p>
-    </header>
+    <div class="topbar">
+      <header class="header">
+        <h1>🍽️ Tableau des dîners</h1>
+        <p>Planifie tes repas de la semaine en glisser-déposer.</p>
+      </header>
 
-    <section class="auth card" id="authCard">
-      <h2>Connexion</h2>
-      <form id="authForm" class="auth-form">
-        <input id="authEmail" type="email" placeholder="Email" required />
-        <input id="authPassword" type="password" placeholder="Mot de passe" required minlength="6" />
-        <div class="auth-actions">
-          <button type="submit">Se connecter</button>
-          <button id="registerBtn" type="button" class="action">Créer un compte</button>
-        </div>
-      </form>
-      <p id="authMessage" class="auth-message"></p>
-    </section>
+      <div class="auth-panel">
+        <section class="auth card" id="authCard">
+          <h2>Connexion</h2>
+          <form id="authForm" class="auth-form">
+            <input id="authEmail" type="email" placeholder="Email" required />
+            <input id="authPassword" type="password" placeholder="Mot de passe" required minlength="6" />
+            <div class="auth-actions">
+              <button type="submit">Se connecter</button>
+              <button id="registerBtn" type="button" class="action">Créer un compte</button>
+            </div>
+          </form>
+          <p id="authMessage" class="auth-message"></p>
+        </section>
 
-    <section class="session card hidden" id="sessionCard">
-      <p>Connecté avec <strong id="userEmail"></strong></p>
-      <button id="logoutBtn" class="action delete" type="button">Se déconnecter</button>
-    </section>
+        <section class="session card hidden" id="sessionCard">
+          <p>Connecté avec <strong id="userEmail"></strong></p>
+          <button id="logoutBtn" class="action delete" type="button">Se déconnecter</button>
+        </section>
+      </div>
+    </div>
 
     <main class="layout hidden" id="appLayout">
       <section class="planner card">

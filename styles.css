@@ -24,9 +24,17 @@ body {
   display: none !important;
 }
 
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(300px, 420px);
+  align-items: start;
+  gap: 1rem;
+  padding: 1rem;
+}
+
 .header {
-  padding: 1.5rem;
-  text-align: center;
+  padding: 0.5rem;
+  text-align: left;
 }
 
 .header h1 {
@@ -38,9 +46,17 @@ body {
   color: var(--muted);
 }
 
+.auth-panel {
+  display: grid;
+}
+
 .auth,
 .session {
-  margin: 0 1rem 1rem;
+  margin: 0;
+}
+
+.auth h2 {
+  margin-top: 0;
 }
 
 .auth-form {
@@ -58,6 +74,18 @@ body {
   min-height: 1.2rem;
   color: var(--muted);
   margin: 0.5rem 0 0;
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding-block: 0.8rem;
+}
+
+.session p {
+  margin: 0;
 }
 
 .layout {
@@ -272,6 +300,14 @@ body {
 }
 
 @media (max-width: 920px) {
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    text-align: center;
+  }
+
   .layout {
     grid-template-columns: 1fr;
   }
