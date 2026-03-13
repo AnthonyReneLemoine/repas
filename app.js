@@ -147,12 +147,12 @@ async function boot() {
 function wireEvents() {
   mealForm.addEventListener('submit', onCreateMeal);
   showArchivedInput.addEventListener('change', render);
-  mealSearchInput.addEventListener('input', render);
+  mealSearchInput?.addEventListener('input', render);
   authForm.addEventListener('submit', onLogin);
   registerBtn.addEventListener('click', onRegister);
   logoutBtn.addEventListener('click', onLogout);
-  weekTabsEl.addEventListener('click', onWeekTabClick);
-  resetWeekBtn.addEventListener('click', onResetWeekClick);
+  weekTabsEl?.addEventListener('click', onWeekTabClick);
+  resetWeekBtn?.addEventListener('click', onResetWeekClick);
 
   daysBoardEl.addEventListener('change', async (event) => {
     const mondayInput = event.target.closest('#mondayDateInput');
@@ -170,7 +170,7 @@ function wireEvents() {
     mealsListEl.classList.add('drag-over');
 
     if (!dragState.fromList || !dragState.mealId) return;
-    if (mealSearchInput.value.trim()) return;
+    if (isSearchActive()) return;
 
     const targetCard = event.target.closest('.meal-card');
     if (!targetCard || targetCard.dataset.mealId === dragState.mealId) return;
@@ -191,7 +191,7 @@ function wireEvents() {
     const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
 
     if (dragState.fromList && mealId) {
-      if (mealSearchInput.value.trim()) {
+      if (isSearchActive()) {
         setMealMessage('Désactive la recherche pour réorganiser les fiches.', true);
       } else {
         await saveMealsOrderFromDom();
@@ -384,6 +384,7 @@ function renderDayLanes() {
 }
 
 function updateWeekTabs() {
+  if (!weekTabsEl) return;
   weekTabsEl.querySelectorAll('.week-tab').forEach((button) => {
     button.classList.toggle('is-active', button.dataset.week === activeWeekKey);
   });
@@ -469,7 +470,7 @@ function render() {
 
 function renderMealsList() {
   const showArchived = showArchivedInput.checked;
-  const searchTerm = normalizeMealName(mealSearchInput.value || '');
+  const searchTerm = normalizeMealName(mealSearchInput?.value || '');
   const visibleMeals = getMealsOrderedBySort()
     .filter((meal) => (showArchived ? true : !meal.archived))
     .filter((meal) => {
@@ -518,6 +519,10 @@ function renderMealsList() {
   mealsListEl.querySelectorAll('[data-action]').forEach((button) => {
     button.addEventListener('click', onMealAction);
   });
+}
+
+function isSearchActive() {
+  return Boolean(mealSearchInput?.value?.trim());
 }
 
 function renderWeek() {
