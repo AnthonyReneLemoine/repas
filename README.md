@@ -6,8 +6,12 @@ Application web statique type Trello/Keep pour planifier les dîners de la semai
 
 - Authentification Firebase avec email + mot de passe.
 - Bouton de déconnexion.
-- Colonnes hebdomadaires (`Lundi` à `Dimanche`) avec zones de dépôt.
+- Planning sur 2 onglets (`Semaine 1` / `Semaine 2`) avec colonnes (`Lundi` à `Dimanche`) et zones de dépôt.
+- Sélecteur de date sur le Lundi pour calculer/afficher les dates de toute la semaine active.
+- Bouton de reset du planning par onglet de semaine.
 - Liste des repas avec création, modification, suppression, archivage/désarchivage.
+- Recherche dans les fiches repas.
+- Réorganisation des fiches repas par glisser-déposer avec ordre persistant.
 - Glisser-déposer :
   - depuis la liste des repas vers un jour,
   - entre les jours,
@@ -67,15 +71,20 @@ L'app est ensuite servie en statique.
   - `name: string`
   - `note: string`
   - `archived: boolean`
+  - `sortOrder: number`
+  - `ownerUid: string`
   - `createdAt: timestamp`
 - Collection `weekPlans`
-  - document `currentWeek`
-  - champ `days`:
+  - documents `currentWeek1` et `currentWeek2`
+  - champs `days` + `mondayDate`:
 
 ```json
 {
-  "Lundi": ["mealId1"],
-  "Mardi": ["mealId2", "mealId3"]
+  "mondayDate": "2026-03-16",
+  "days": {
+    "Lundi": ["mealId1"],
+    "Mardi": ["mealId2", "mealId3"]
+  }
 }
 ```
 
