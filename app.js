@@ -703,7 +703,7 @@ function getMondayIsoForToday() {
   const now = new Date();
   const offset = (now.getDay() + 6) % 7;
   now.setDate(now.getDate() - offset);
-  return now.toISOString().slice(0, 10);
+  return formatDateToLocalIso(now);
 }
 
 function sanitizeMondayDate(value) {
@@ -719,13 +719,20 @@ function getWeekDates(mondayIsoDate) {
   return DAYS.map((_, index) => {
     const next = new Date(base);
     next.setDate(base.getDate() + index);
-    return next.toISOString().slice(0, 10);
+    return formatDateToLocalIso(next);
   });
 }
 
 function formatDateFr(isoDate) {
   const dateObj = new Date(`${sanitizeMondayDate(isoDate)}T12:00:00`);
   return dateObj.toLocaleDateString('fr-FR');
+}
+
+function formatDateToLocalIso(dateObj) {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 async function ensureFirebaseConfig() {
