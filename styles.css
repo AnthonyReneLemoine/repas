@@ -77,6 +77,12 @@ body {
   margin: 0.5rem 0 0;
 }
 
+.auth-hint {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .session {
   display: flex;
   align-items: center;
@@ -125,13 +131,15 @@ body {
   gap: 0.5rem;
 }
 
-.week-tabs {
+.week-navigation {
   display: flex;
+  align-items: center;
   gap: 0.35rem;
   margin-top: 0.35rem;
 }
 
-.week-tab {
+.week-nav-btn,
+.week-current-btn {
   border: 1px solid #cbd5e1;
   background: #fff;
   border-radius: 999px;
@@ -142,11 +150,23 @@ body {
   color: #334155;
 }
 
-.week-tab.is-active {
+.week-nav-btn {
+  min-width: 2.25rem;
+  font-size: 1rem;
+}
+
+.week-current-btn.is-active {
   border-color: #93c5fd;
   background: #dbeafe;
   color: #1e3a8a;
   font-weight: 600;
+}
+
+.week-range-label {
+  min-width: 14rem;
+  text-align: center;
+  color: #334155;
+  font-size: 0.88rem;
 }
 
 .card {
