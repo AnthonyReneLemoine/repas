@@ -1,6 +1,5 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
-  createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -24,11 +23,8 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-const WEEK_KEYS = ['week1', 'week2'];
-const WEEK_DOC_IDS = {
-  week1: 'currentWeek1',
-  week2: 'currentWeek2',
-};
+const ALLOWED_UID = 'ENgOZhuh0ca3tqeb0IbII2CCVzX2';
+const LEGACY_WEEK_DOC_IDS = ['currentWeek1', 'currentWeek2'];
 const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
 
 const INITIAL_MEAL_NAMES = [
@@ -87,13 +83,15 @@ const sessionCardEl = document.getElementById('sessionCard');
 const authForm = document.getElementById('authForm');
 const authEmailInput = document.getElementById('authEmail');
 const authPasswordInput = document.getElementById('authPassword');
-const registerBtn = document.getElementById('registerBtn');
 const authMessageEl = document.getElementById('authMessage');
 const logoutBtn = document.getElementById('logoutBtn');
 const userEmailEl = document.getElementById('userEmail');
 
 const daysBoardEl = document.getElementById('daysBoard');
-const weekTabsEl = document.getElementById('weekTabs');
+const prevWeekBtn = document.getElementById('prevWeekBtn');
+const currentWeekBtn = document.getElementById('currentWeekBtn');
+const nextWeekBtn = document.getElementById('nextWeekBtn');
+const weekRangeLabelEl = document.getElementById('weekRangeLabel');
 const resetWeekBtn = document.getElementById('resetWeekBtn');
 const mealsListEl = document.getElementById('mealsList');
 const mealForm = document.getElementById('mealForm');
@@ -111,7 +109,6 @@ let auth;
 let meals = [];
 let weekPlan = makeEmptyWeek();
 let mondayDateISO = getMondayIsoForToday();
-let activeWeekKey = 'week1';
 let unsubscribeMeals;
 let unsubscribeWeek;
 const dragState = {
@@ -127,7 +124,7 @@ boot().catch((error) => {
 
 async function boot() {
   renderDayLanes();
-  updateWeekTabs();
+  updateWeekNavigation();
   wireEvents();
 
   const config = await ensureFirebaseConfig();
@@ -149,21 +146,11 @@ function wireEvents() {
   showArchivedInput.addEventListener('change', render);
   mealSearchInput?.addEventListener('input', render);
   authForm.addEventListener('submit', onLogin);
-  registerBtn.addEventListener('click', onRegister);
   logoutBtn.addEventListener('click', onLogout);
-  weekTabsEl?.addEventListener('click', onWeekTabClick);
+  prevWeekBtn?.addEventListener('click', () => changeWeek(-1));
+  currentWeekBtn?.addEventListener('click', () => setActiveWeek(getMondayIsoForToday()));
+  nextWeekBtn?.addEventListener('click', () => changeWeek(1));
   resetWeekBtn?.addEventListener('click', onResetWeekClick);
-
-  daysBoardEl.addEventListener('change', async (event) => {
-    const mondayInput = event.target.closest('#mondayDateInput');
-    if (!mondayInput) return;
-    if (!auth?.currentUser) return;
-
-    mondayDateISO = sanitizeMondayDate(mondayInput.value);
-    render();
-    await saveWeekPlan();
-    setMealMessage('Dates de la semaine mises à jour.');
-  });
 
   mealsListEl.addEventListener('dragover', (event) => {
     event.preventDefault();
@@ -263,55 +250,34 @@ async function onLogin(event) {
   }
 }
 
-async function onRegister() {
-  const email = authEmailInput.value.trim();
-  const password = authPasswordInput.value;
-  if (!email || !password) {
-    setAuthMessage('Saisis un email et un mot de passe (6 caractères minimum).');
-    return;
-  }
-
-  setAuthMessage('Création du compte...');
-  try {
-    await createUserWithEmailAndPassword(auth, email, password);
-    authForm.reset();
-    setAuthMessage('Compte créé et connecté.');
-  } catch (error) {
-    setAuthMessage(`Création impossible : ${humanizeAuthError(error.code)}`);
-  }
-}
-
 async function onLogout() {
   await signOut(auth);
 }
 
-async function onWeekTabClick(event) {
-  const target = event.target.closest('.week-tab');
-  if (!target) return;
-  const weekKey = target.dataset.week;
-  if (!WEEK_KEYS.includes(weekKey)) return;
-
-  await setActiveWeek(weekKey);
-}
-
 async function onResetWeekClick() {
   if (!auth?.currentUser) return;
-  const label = activeWeekKey === 'week1' ? 'Semaine 1' : 'Semaine 2';
-  const ok = confirm(`Effacer toutes les fiches planifiées de ${label} ?`);
+  const ok = confirm(`Effacer toutes les fiches planifiées de la semaine du ${formatDateFr(mondayDateISO)} ?`);
   if (!ok) return;
 
   weekPlan = makeEmptyWeek();
   await saveWeekPlan();
-  setMealMessage(`${label} réinitialisée.`);
+  setMealMessage('Semaine réinitialisée.');
 }
 
 async function onSignedIn(user) {
+  if (user.uid !== ALLOWED_UID) {
+    await signOut(auth);
+    setAuthMessage('Ce compte n’est pas autorisé à accéder à ce planning.');
+    return;
+  }
+
   userEmailEl.textContent = user.email || 'Utilisateur';
   authCardEl.classList.add('hidden');
   sessionCardEl.classList.remove('hidden');
   appLayoutEl.classList.remove('hidden');
 
-  await ensureWeekDocs();
+  await migrateLegacyWeeks();
+  await ensureWeekDoc(mondayDateISO);
   await ensureInitialMeals(user.uid);
   unsubscribeMeals?.();
   unsubscribeWeek?.();
@@ -328,8 +294,7 @@ function onSignedOut() {
   meals = [];
   weekPlan = makeEmptyWeek();
   mondayDateISO = getMondayIsoForToday();
-  activeWeekKey = 'week1';
-  updateWeekTabs();
+  updateWeekNavigation();
   render();
 
   appLayoutEl.classList.add('hidden');
@@ -365,17 +330,13 @@ function humanizeAuthError(code = '') {
 
 function renderDayLanes() {
   const weekDates = getWeekDates(mondayDateISO);
+  updateWeekNavigation();
   daysBoardEl.innerHTML = DAYS.map(
     (day, index) => `
       <article class="day-lane">
         <div class="day-label">
           <span class="day-name">${day}</span>
           <span class="day-date">${formatDateFr(weekDates[index])}</span>
-          ${
-            index === 0
-              ? `<input id="mondayDateInput" class="monday-date-input" type="date" value="${weekDates[0]}" aria-label="Date du lundi" />`
-              : ''
-          }
         </div>
         <div class="day-dropzone" data-day="${day}"></div>
       </article>
@@ -383,30 +344,35 @@ function renderDayLanes() {
   ).join('');
 }
 
-function updateWeekTabs() {
-  if (!weekTabsEl) return;
-  weekTabsEl.querySelectorAll('.week-tab').forEach((button) => {
-    button.classList.toggle('is-active', button.dataset.week === activeWeekKey);
-  });
+function updateWeekNavigation() {
+  if (!weekRangeLabelEl) return;
+  const dates = getWeekDates(mondayDateISO);
+  const start = formatWeekBoundary(dates[0]);
+  const end = formatWeekBoundary(dates[6], true);
+  weekRangeLabelEl.textContent = `Du ${start} au ${end}`;
+  currentWeekBtn?.classList.toggle('is-active', mondayDateISO === getMondayIsoForToday());
 }
 
 function getActiveWeekDocId() {
-  return WEEK_DOC_IDS[activeWeekKey] || WEEK_DOC_IDS.week1;
+  return `week-${normalizeMondayDate(mondayDateISO)}`;
 }
 
-async function setActiveWeek(weekKey) {
-  if (!WEEK_KEYS.includes(weekKey) || weekKey === activeWeekKey) return;
-  activeWeekKey = weekKey;
-  updateWeekTabs();
-
+async function setActiveWeek(mondayIsoDate) {
+  const nextMonday = normalizeMondayDate(mondayIsoDate);
+  if (nextMonday === mondayDateISO) return;
+  mondayDateISO = nextMonday;
   weekPlan = makeEmptyWeek();
-  mondayDateISO = getMondayIsoForToday();
   render();
 
   if (!auth?.currentUser) return;
 
   unsubscribeWeek?.();
+  await ensureWeekDoc(mondayDateISO);
   subscribeToWeek();
+}
+
+async function changeWeek(offset) {
+  await setActiveWeek(shiftMonday(mondayDateISO, offset));
 }
 
 function subscribeToMeals() {
@@ -422,7 +388,6 @@ function subscribeToWeek() {
   unsubscribeWeek = onSnapshot(weekRef, (snapshot) => {
     const data = snapshot.data();
     weekPlan = data?.days ? sanitizeWeek(data.days) : makeEmptyWeek();
-    mondayDateISO = sanitizeMondayDate(data?.mondayDate);
     render();
   });
 }
@@ -665,28 +630,45 @@ function normalizeMealName(name) {
     .trim();
 }
 
-async function ensureWeekDocs() {
-  await Promise.all(
-    WEEK_KEYS.map(async (weekKey) => {
-      const weekRef = doc(db, 'weekPlans', WEEK_DOC_IDS[weekKey]);
-      const snap = await getDoc(weekRef);
-      if (!snap.exists()) {
-        await setDoc(weekRef, { days: makeEmptyWeek(), mondayDate: getMondayIsoForToday() });
-        return;
-      }
+async function migrateLegacyWeeks() {
+  let previousTargetMonday = '';
+  for (let index = 0; index < LEGACY_WEEK_DOC_IDS.length; index += 1) {
+    const legacyId = LEGACY_WEEK_DOC_IDS[index];
+    const legacySnap = await getDoc(doc(db, 'weekPlans', legacyId));
+    if (!legacySnap.exists()) continue;
 
-      const data = snap.data() || {};
-      if (typeof data.mondayDate !== 'string' || !data.mondayDate) {
-        await setDoc(weekRef, { mondayDate: getMondayIsoForToday() }, { merge: true });
-      }
-    }),
-  );
+    const legacyData = legacySnap.data() || {};
+    const fallbackMonday = shiftMonday(getMondayIsoForToday(), index);
+    let legacyMonday = normalizeMondayDate(legacyData.mondayDate, fallbackMonday);
+    if (legacyMonday === previousTargetMonday) {
+      legacyMonday = shiftMonday(previousTargetMonday, 1);
+    }
+    previousTargetMonday = legacyMonday;
+    const targetRef = doc(db, 'weekPlans', `week-${legacyMonday}`);
+    const targetSnap = await getDoc(targetRef);
+    if (targetSnap.exists()) continue;
+
+    await setDoc(targetRef, {
+      days: sanitizeWeek(legacyData.days),
+      mondayDate: legacyMonday,
+      migratedFrom: legacyId,
+    });
+  }
+}
+
+async function ensureWeekDoc(mondayIsoDate) {
+  const safeMonday = normalizeMondayDate(mondayIsoDate);
+  const weekRef = doc(db, 'weekPlans', `week-${safeMonday}`);
+  const snap = await getDoc(weekRef);
+  if (!snap.exists()) {
+    await setDoc(weekRef, { days: makeEmptyWeek(), mondayDate: safeMonday });
+  }
 }
 
 async function saveWeekPlan() {
   await setDoc(
     doc(db, 'weekPlans', getActiveWeekDocId()),
-    { days: sanitizeWeek(weekPlan), mondayDate: sanitizeMondayDate(mondayDateISO) },
+    { days: sanitizeWeek(weekPlan), mondayDate: normalizeMondayDate(mondayDateISO) },
     { merge: true },
   );
 }
@@ -711,12 +693,26 @@ function getMondayIsoForToday() {
   return formatDateToLocalIso(now);
 }
 
-function sanitizeMondayDate(value) {
-  if (typeof value !== 'string') return getMondayIsoForToday();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return getMondayIsoForToday();
+function sanitizeMondayDate(value, fallback = getMondayIsoForToday()) {
+  if (typeof value !== 'string') return fallback;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return fallback;
   const parsed = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return getMondayIsoForToday();
+  if (Number.isNaN(parsed.getTime())) return fallback;
   return value;
+}
+
+function normalizeMondayDate(value, fallback = getMondayIsoForToday()) {
+  const safeValue = sanitizeMondayDate(value, fallback);
+  const parsed = new Date(`${safeValue}T12:00:00`);
+  const offset = (parsed.getDay() + 6) % 7;
+  parsed.setDate(parsed.getDate() - offset);
+  return formatDateToLocalIso(parsed);
+}
+
+function shiftMonday(mondayIsoDate, weekOffset) {
+  const dateObj = new Date(`${normalizeMondayDate(mondayIsoDate)}T12:00:00`);
+  dateObj.setDate(dateObj.getDate() + weekOffset * 7);
+  return formatDateToLocalIso(dateObj);
 }
 
 function getWeekDates(mondayIsoDate) {
@@ -731,6 +727,15 @@ function getWeekDates(mondayIsoDate) {
 function formatDateFr(isoDate) {
   const dateObj = new Date(`${sanitizeMondayDate(isoDate)}T12:00:00`);
   return dateObj.toLocaleDateString('fr-FR');
+}
+
+function formatWeekBoundary(isoDate, includeYear = false) {
+  const dateObj = new Date(`${isoDate}T12:00:00`);
+  return dateObj.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    ...(includeYear ? { year: 'numeric' } : {}),
+  });
 }
 
 function formatDateToLocalIso(dateObj) {
@@ -779,10 +784,24 @@ function parseFirebaseConfigInput(rawValue) {
   }
 
   const objectLiteral = rawValue.slice(firstBrace, lastBrace + 1);
-  let parsedObject;
-  try {
-    parsedObject = Function(`"use strict"; return (${objectLiteral});`)();
-  } catch {
+  const parsedObject = {};
+  const supportedKeys = [
+    'apiKey',
+    'authDomain',
+    'projectId',
+    'storageBucket',
+    'messagingSenderId',
+    'appId',
+    'measurementId',
+  ];
+
+  supportedKeys.forEach((key) => {
+    const pattern = new RegExp(`["']?${key}["']?\\s*:\\s*(["'])(.*?)\\1`);
+    const match = objectLiteral.match(pattern);
+    if (match) parsedObject[key] = match[2];
+  });
+
+  if (!Object.keys(parsedObject).length) {
     throw new Error('Le format de la configuration Firebase est invalide.');
   }
 
