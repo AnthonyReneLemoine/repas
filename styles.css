@@ -485,3 +485,28 @@ body {
     top: 0;
   }
 }
+
+
+/* Planning à trois repas par jour — v3 */
+.day-lane {
+  grid-row: span 4;
+  grid-template-rows: subgrid;
+}
+.meal-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-self: stretch;
+}
+.slot-label {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.meal-slot .day-dropzone { flex: 1; }
+.day-dropzone .empty { font-size: 0.8rem; }
+.app-version { color: var(--muted); font-size: 0.7rem; }
+@media (max-height: 700px), (max-width: 920px) {
+  .planner { position: static; }
+  .week-navigation { flex-wrap: wrap; }
+}

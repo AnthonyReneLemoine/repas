@@ -21,6 +21,11 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+const MEAL_SLOTS = [
+  { id: 'breakfast', label: 'Petit-déjeuner' },
+  { id: 'lunch', label: 'Déjeuner' },
+  { id: 'dinner', label: 'Dîner' },
+];
 const ALLOWED_UID = 'ENgOZhuh0ca3tqeb0IbII2CCVzX2';
 const LEGACY_WEEK_DOC_IDS = ['currentWeek1', 'currentWeek2'];
 const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
@@ -62,6 +67,7 @@ let unsubscribeWeek;
 const dragState = {
   mealId: '',
   fromDay: '',
+  fromSlot: '',
   fromList: false,
 };
 
@@ -124,6 +130,7 @@ function wireEvents() {
 
     const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
     const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
+    const fromSlot = dragState.fromSlot || event.dataTransfer.getData('fromSlot');
 
     if (dragState.fromList && mealId) {
       if (isSearchActive()) {
@@ -136,9 +143,9 @@ function wireEvents() {
       return;
     }
 
-    if (!mealId || !fromDay) return;
+    if (!mealId || !isValidSlot(fromDay, fromSlot)) return;
 
-    weekPlan[fromDay] = (weekPlan[fromDay] || []).filter((id) => id !== mealId);
+    removePlannedMeal(mealId, fromDay, fromSlot);
     await saveWeekPlan();
     resetDragState();
   });
@@ -166,17 +173,15 @@ function wireEvents() {
 
     const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
     const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
-    if (!mealId) return;
+    const fromSlot = dragState.fromSlot || event.dataTransfer.getData('fromSlot');
+    const targetSlot = lane.dataset.slot;
+    if (!mealId || !isValidSlot(targetDay, targetSlot)) return;
 
-    if (fromDay) {
-      weekPlan[fromDay] = (weekPlan[fromDay] || []).filter((id) => id !== mealId);
-    }
+    if (fromDay && !isValidSlot(fromDay, fromSlot)) return;
+    if (fromDay) removePlannedMeal(mealId, fromDay, fromSlot);
 
-    const dayItems = weekPlan[targetDay] || [];
-    if (!dayItems.includes(mealId)) {
-      dayItems.push(mealId);
-    }
-    weekPlan[targetDay] = dayItems;
+    const dayItems = weekPlan[targetDay][targetSlot];
+    if (!dayItems.includes(mealId)) dayItems.push(mealId);
 
     await saveWeekPlan();
     resetDragState();
@@ -285,7 +290,12 @@ function renderDayLanes() {
           <span class="day-name">${day}</span>
           <span class="day-date">${formatDateFr(weekDates[index])}</span>
         </div>
-        <div class="day-dropzone" data-day="${day}"></div>
+         ${MEAL_SLOTS.map((slot) => `
+          <section class="meal-slot">
+            <h3 class="slot-label">${slot.label}</h3>
+            <div class="day-dropzone" data-day="${day}" data-slot="${slot.id}" aria-label="${day} — ${slot.label}"></div>
+          </section>
+        `).join('')}
       </article>
     `,
   ).join('');
@@ -420,9 +430,11 @@ function renderMealsList() {
     item.addEventListener('dragstart', (event) => {
       dragState.mealId = item.dataset.mealId || '';
       dragState.fromDay = '';
+      dragState.fromSlot = '';
       dragState.fromList = true;
       event.dataTransfer.setData('mealId', item.dataset.mealId);
       event.dataTransfer.setData('fromDay', '');
+      event.dataTransfer.setData('fromSlot', '');
       event.dataTransfer.setData('fromList', 'true');
     });
     item.addEventListener('dragend', resetDragState);
@@ -438,16 +450,16 @@ function isSearchActive() {
 }
 
 function renderWeek() {
-  DAYS.forEach((day) => {
-    const lane = daysBoardEl.querySelector(`.day-dropzone[data-day="${day}"]`);
+  DAYS.forEach((day) => MEAL_SLOTS.forEach((slot) => {
+    const lane = daysBoardEl.querySelector(`.day-dropzone[data-day="${day}"][data-slot="${slot.id}"]`);
     if (!lane) return;
 
-    const cards = (weekPlan[day] || [])
+    const cards = (weekPlan[day][slot.id] || [])
       .map((mealId) => meals.find((meal) => meal.id === mealId))
       .filter(Boolean)
       .map(
         (meal) => `
-          <article class="meal-card" draggable="true" data-meal-id="${meal.id}" data-from-day="${day}">
+          <article class="meal-card" draggable="true" data-meal-id="${meal.id}" data-from-day="${day}" data-from-slot="${slot.id}">
             <h4 class="meal-name">${escapeHtml(meal.name)}</h4>
             ${meal.note ? `<p class="meal-note">${escapeHtml(meal.note)}</p>` : ''}
           </article>
@@ -461,13 +473,15 @@ function renderWeek() {
       card.addEventListener('dragstart', (event) => {
         dragState.mealId = card.dataset.mealId || '';
         dragState.fromDay = card.dataset.fromDay || '';
+        dragState.fromSlot = card.dataset.fromSlot || '';
         dragState.fromList = false;
         event.dataTransfer.setData('mealId', card.dataset.mealId);
         event.dataTransfer.setData('fromDay', card.dataset.fromDay || '');
+        event.dataTransfer.setData('fromSlot', card.dataset.fromSlot || '');
       });
       card.addEventListener('dragend', resetDragState);
     });
-  });
+  }));
 }
 
 function getMealsOrderedBySort() {
@@ -503,6 +517,7 @@ async function saveMealsOrderFromDom() {
 function resetDragState() {
   dragState.mealId = '';
   dragState.fromDay = '';
+  dragState.fromSlot = '';
   dragState.fromList = false;
 }
 
@@ -530,7 +545,7 @@ async function onMealAction(event) {
 
     await deleteDoc(doc(db, 'meals', id));
     DAYS.forEach((day) => {
-      weekPlan[day] = (weekPlan[day] || []).filter((mealId) => mealId !== id);
+      MEAL_SLOTS.forEach((slot) => removePlannedMeal(id, day, slot.id));
     });
     await saveWeekPlan();
   }
@@ -588,16 +603,33 @@ async function saveWeekPlan() {
 }
 
 function makeEmptyWeek() {
-  return Object.fromEntries(DAYS.map((day) => [day, []]));
+  return Object.fromEntries(DAYS.map((day) => [
+    day, Object.fromEntries(MEAL_SLOTS.map((slot) => [slot.id, []])),
+  ]));
 }
 
 function sanitizeWeek(rawWeek) {
   const safe = makeEmptyWeek();
   DAYS.forEach((day) => {
-    const values = Array.isArray(rawWeek?.[day]) ? rawWeek[day] : [];
-    safe[day] = [...new Set(values.filter((value) => typeof value === 'string' && value))];
+    // Les anciens plannings contenaient uniquement les dîners.
+    const rawDay = Array.isArray(rawWeek?.[day])
+      ? { dinner: rawWeek[day] }
+      : rawWeek?.[day];
+    MEAL_SLOTS.forEach((slot) => {
+      const values = Array.isArray(rawDay?.[slot.id]) ? rawDay[slot.id] : [];
+      safe[day][slot.id] = [...new Set(values.filter((value) => typeof value === 'string' && value))];
+    });
   });
   return safe;
+}
+
+function isValidSlot(day, slot) {
+  return DAYS.includes(day) && MEAL_SLOTS.some((item) => item.id === slot);
+}
+
+function removePlannedMeal(mealId, day, slot) {
+  if (!isValidSlot(day, slot)) return;
+  weekPlan[day][slot] = weekPlan[day][slot].filter((id) => id !== mealId);
 }
 
 function getMondayIsoForToday() {
@@ -759,3 +791,4 @@ configForm.addEventListener('submit', (event) => {
   event.preventDefault();
   configDialog.close('default');
 });
+
