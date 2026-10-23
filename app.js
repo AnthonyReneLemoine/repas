@@ -11,9 +11,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   getFirestore,
-  limit,
   onSnapshot,
   orderBy,
   query,
@@ -26,56 +24,6 @@ const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dima
 const ALLOWED_UID = 'ENgOZhuh0ca3tqeb0IbII2CCVzX2';
 const LEGACY_WEEK_DOC_IDS = ['currentWeek1', 'currentWeek2'];
 const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
-
-const INITIAL_MEAL_NAMES = [
-  'fondue de poireau',
-  'tarte aux poireaux',
-  'Raclette',
-  'moule au curry',
-  'salade',
-  'risotto de quinoa et courgettes',
-  'risotto + blanc de poulet',
-  'Soupe de tomate',
-  'soupe de légumes',
-  'Pizza',
-  'panini',
-  'quiche marie',
-  'pesto',
-  'Œufs au plat',
-  'oeufs pochés + frites',
-  'Omelette',
-  'Couscous',
-  'ratatouille',
-  'tomates provencales + haricot + surimi',
-  'lasagnes de courgettes sauce tomate',
-  'gratin dauphinois',
-  'gratin de choux fleur',
-  'Purée de pommes de terre',
-  'purée de patates douces',
-  'Saumon au micro onde',
-  'St-Jacques',
-  'courgettes sautées au coco',
-  'bowl hawaien',
-  'wok de nouilles aux crevettes',
-  'Croque-monsieur',
-  'crêpes',
-  'Galette de blé noir',
-  'Sushis',
-  'riz tika masala',
-  'Indien',
-  'valentino',
-  'mache tomate chevre oeuf huile',
-  'Nouilles au beurre',
-  'burger',
-  'Ravioli',
-  'Riz à la sénégalaise',
-  'soupe de poisson',
-  'riz thon tabasco',
-  'escargots',
-  'wrap',
-  'boulette de courgette',
-  'gauffres',
-];
 
 const appLayoutEl = document.getElementById('appLayout');
 const authCardEl = document.getElementById('authCard');
@@ -278,7 +226,6 @@ async function onSignedIn(user) {
 
   await migrateLegacyWeeks();
   await ensureWeekDoc(mondayDateISO);
-  await ensureInitialMeals(user.uid);
   unsubscribeMeals?.();
   unsubscribeWeek?.();
   subscribeToMeals();
@@ -587,39 +534,6 @@ async function onMealAction(event) {
     });
     await saveWeekPlan();
   }
-}
-
-async function ensureInitialMeals(ownerUid) {
-  const mealsRef = collection(db, 'meals');
-  const existingMeals = await getDocs(query(mealsRef, limit(300)));
-
-  const existingNames = new Set(
-    existingMeals.docs
-      .map((docSnap) => docSnap.data()?.name)
-      .filter((name) => typeof name === 'string')
-      .map((name) => normalizeMealName(name)),
-  );
-
-  const missingNames = INITIAL_MEAL_NAMES.filter((name) => !existingNames.has(normalizeMealName(name)));
-  if (!missingNames.length) return;
-
-  const existingOrders = existingMeals.docs
-    .map((docSnap) => docSnap.data()?.sortOrder)
-    .filter((value) => Number.isFinite(value));
-  const startOrder = existingOrders.length ? Math.max(...existingOrders) + 1 : 0;
-
-  await Promise.all(
-    missingNames.map((name, index) =>
-      addDoc(mealsRef, {
-        name,
-        note: '',
-        archived: false,
-        sortOrder: startOrder + index,
-        createdAt: serverTimestamp(),
-        ownerUid,
-      }),
-    ),
-  );
 }
 
 function normalizeMealName(name) {
