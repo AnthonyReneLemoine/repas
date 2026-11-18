@@ -69,9 +69,10 @@ test('le SMS du mercredi couvre les dîners de mercredi à dimanche inclus',asyn
   s.weeks[monday].Mercredi.dinner=['tartines','inconnu','nouilles'];
   s.weeks[monday].Dimanche.dinner=['tartines'];
   const part=dinnerMessage(s,monday,'2026-11-18');
-  assert.equal(part,'Dîners\nMercredi 18/11 : Tartines de chèvre chaud + Nouilles au brocoli et aux crevettes\nDimanche 22/11 : Tartines de chèvre chaud');
+  const introduction='Le chef Tony, Minou et Pelucho les commis, vous proposent à diner :';
+  assert.equal(part,introduction+'\n\nMercredi 18/11 : Tartines de chèvre chaud + Nouilles au brocoli et aux crevettes\nDimanche 22/11 : Tartines de chèvre chaud\n\nBon appetit !');
   assert.match(dinnerMessage(s,monday),/Lundi 16\/11/);
-  assert.equal(dinnerMessage(s,monday,'2026-11-22'),'Dîners\nDimanche 22/11 : Tartines de chèvre chaud');
+  assert.equal(dinnerMessage(s,monday,'2026-11-22'),introduction+'\n\nDimanche 22/11 : Tartines de chèvre chaud\n\nBon appetit !');
   assert.equal(dinnerMessage(s,monday,'2026-11-23'),'');
   assert.equal(dinnerMessage(s,monday,'2026-11-13'),dinnerMessage(s,monday));
   s.weeks[monday]={Jeudi:['nouilles']};

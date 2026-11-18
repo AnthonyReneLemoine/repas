@@ -86,7 +86,12 @@ export function dinnerMessage(state, monday, fromDate = '') {
     const names = days[day].dinner.map(id => state.meals[id]?.name).filter(Boolean);
     if (names.length) lines.push(day + ' ' + dates[i].slice(8) + '/' + dates[i].slice(5,7) + ' : ' + names.join(' + '));
   }
-  return lines.length ? ['Dîners', ...lines].join('\n') : '';
+  if (!lines.length) return '';
+  return [
+    'Le chef Tony, Minou et Pelucho les commis, vous proposent à diner :',
+    lines.join('\n'),
+    'Bon appetit !'
+  ].join('\n\n');
 }
 
 export function recipe(raw) {
