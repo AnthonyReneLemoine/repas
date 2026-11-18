@@ -8,7 +8,7 @@
 
 ## Fonctionnalités existantes à conserver
 - Authentification Firebase et contrôle d'accès
-- Planning hebdomadaire (lundi à dimanche) avec petit-déjeuner, déjeuner et dîner
+- Planning hebdomadaire (lundi à dimanche) avec déjeuner et dîner, et export SMS des dîners de la semaine ou des jours restants
 - Glisser-déposer des repas
 - Fiches repas, recherche et archivage
 - Synchronisation Firestore

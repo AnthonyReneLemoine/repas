@@ -62,3 +62,30 @@ test('les transactions Firestore simulées isolent les données et refusent une 
     db.dispose();
   }finally{hooks.deregister();}
 });
+
+test('le SMS du mercredi couvre les dîners de mercredi à dimanche inclus',async()=>{
+  const {dinnerMessage}=await import('../modele.mjs');
+  const s=sampleState(monday);
+  s.weeks[monday].Mercredi.dinner=['tartines','inconnu','nouilles'];
+  s.weeks[monday].Dimanche.dinner=['tartines'];
+  const part=dinnerMessage(s,monday,'2026-11-18');
+  assert.equal(part,'Dîners\nMercredi 18/11 : Tartines de chèvre chaud + Nouilles au brocoli et aux crevettes\nDimanche 22/11 : Tartines de chèvre chaud');
+  assert.match(dinnerMessage(s,monday),/Lundi 16\/11/);
+  assert.equal(dinnerMessage(s,monday,'2026-11-22'),'Dîners\nDimanche 22/11 : Tartines de chèvre chaud');
+  assert.equal(dinnerMessage(s,monday,'2026-11-23'),'');
+  assert.equal(dinnerMessage(s,monday,'2026-11-13'),dinnerMessage(s,monday));
+  s.weeks[monday]={Jeudi:['nouilles']};
+  assert.match(dinnerMessage(s,monday),/Jeudi 19\/11/);
+});
+
+test('les petits-déjeuners historiques restent sauvegardés et sont exclus des courses et du SMS',async()=>{
+  const {dinnerMessage,SLOTS}=await import('../modele.mjs');
+  const s=sampleState(monday), days=weekDays();
+  days.Lundi.breakfast=['tartines'];
+  days.Mercredi.lunch=['nouilles'];
+  s.weeks[monday]=days;
+  assert.deepEqual(Object.keys(SLOTS),['lunch','dinner']);
+  assert.deepEqual(readBackup(backup(s)).weeks[monday].Lundi.breakfast,['tartines']);
+  assert.equal(shopping(s,monday,2).items.some(i=>i.name==='Pain'),false);
+  assert.equal(dinnerMessage(s,monday),'');
+});

@@ -59,7 +59,9 @@ export function formatDateToLocalIso(dateObj) {
 
 
 export const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-export const SLOTS = { breakfast: 'Petit-déjeuner', lunch: 'Déjeuner', dinner: 'Dîner' };
+export const SLOTS = { lunch: 'Déjeuner', dinner: 'Dîner' };
+// Les sauvegardes v1 et les semaines Firebase conservent les anciens petits-déjeuners.
+const storedSlots = ['breakfast', ...Object.keys(SLOTS)];
 export const EQUIPMENT = ['Thermomix TM5', 'Air Fryer', 'Four', 'Faitout'];
 export const fold = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 export const amount = n => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 3 }).format(n);
@@ -68,11 +70,23 @@ export const emptyState = () => ({ meals: {}, weeks: {} });
 export function weekDays(source = {}) {
   return Object.fromEntries(DAYS.map(day => {
     const slots = Array.isArray(source[day]) ? { dinner: source[day] } : source[day];
-    return [day, Object.fromEntries(Object.keys(SLOTS).map(slot => {
+    return [day, Object.fromEntries(storedSlots.map(slot => {
       const ids = slots?.[slot];
       return [slot, Array.isArray(ids) ? [...new Set(ids.filter(id => typeof id === 'string'))] : []];
     }))];
   }));
+}
+
+export function dinnerMessage(state, monday, fromDate = '') {
+  const days = weekDays(state.weeks[monday]);
+  const dates = getWeekDates(monday);
+  const lines = [];
+  for (const [i,day] of DAYS.entries()) {
+    if (dates[i] < fromDate) continue;
+    const names = days[day].dinner.map(id => state.meals[id]?.name).filter(Boolean);
+    if (names.length) lines.push(day + ' ' + dates[i].slice(8) + '/' + dates[i].slice(5,7) + ' : ' + names.join(' + '));
+  }
+  return lines.length ? ['Dîners', ...lines].join('\n') : '';
 }
 
 export function recipe(raw) {
@@ -84,7 +98,7 @@ export function recipe(raw) {
 export function shopping(state, monday, portions) {
   const totals = new Map(), missing = new Set();
   const days = weekDays(state.weeks[monday]);
-  for (const slots of Object.values(days)) for (const ids of Object.values(slots)) for (const id of ids) {
+  for (const slots of Object.values(days)) for (const slot of Object.keys(SLOTS)) for (const id of slots[slot]) {
     const meal = state.meals[id];
     if (!meal) continue;
     if (!meal.ingredients.length) missing.add(meal.name);
@@ -132,7 +146,7 @@ export function readBackup(raw) {
   }
   for (const [monday,days] of Object.entries(raw.weeks)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(monday) || normalizeMondayDate(monday) !== monday || !plain(days)) fail();
-    for (const day of DAYS) for (const slot of Object.keys(SLOTS)) {
+    for (const day of DAYS) for (const slot of storedSlots) {
       const ids = days[day]?.[slot];
       if (!Array.isArray(ids) || !ids.every(safeId)) fail();
     }

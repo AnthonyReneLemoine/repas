@@ -1,4 +1,4 @@
-import { DAYS,SLOTS,EQUIPMENT,getMondayIsoForToday,getWeekDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
+import { DAYS,SLOTS,EQUIPMENT,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
 import {guide} from './guide.mjs';
 
 const $ = id => document.getElementById(id);
@@ -64,6 +64,7 @@ function render() {
   $('account').textContent=mode==='local'?'Connecter Firebase':'Quitter Firebase';
   document.querySelectorAll('.weekLabel').forEach(n=>n.textContent=weekLabel());
   if(page==='planning') drawBoard();
+  if(dialog.open && $('smsRange')) refreshSms();
   if(page==='recettes') drawRecipes();
   if(page==='courses') drawShopping();
   if(page==='guide') drawGuide();
@@ -101,6 +102,47 @@ function drawShopping(){ $('shopping').innerHTML=shoppingHtml(currentShopping())
 function guideItems(){return guide.filter(row=>fold(row[0]).includes(fold($('guideSearch').value)));}
 function drawGuide(){ $('guide').innerHTML=guideItems().map(([name,temp,time,note])=>`<article class="card"><h2 class="dish-title">${esc(name)}</h2>
   <span class="guide-value">${temp} °C · ${time} min</span><p>${esc(note)}</p></article>`).join('')||empty('Aucun aliment trouvé.'); }
+function refreshSms() {
+  const from = $('smsRange').value === 'remaining' ? formatDateToLocalIso(new Date()) : '';
+  const text = mode === 'loading' ? '' : dinnerMessage(state,monday,from);
+  if ($('smsText').value !== text) {
+    $('smsText').value = text;
+    $('smsFeedback').textContent = '';
+  }
+  $('smsCopy').disabled = !text;
+  $('smsOpen').hidden = !text;
+  $('smsText').hidden = !text;
+  $('smsEmpty').hidden = Boolean(text);
+  $('smsEmpty').textContent = mode === 'loading' ? 'Chargement du planning…' : 'Aucun dîner prévu pour cette période.';
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  $('smsOpen').href = 'sms:' + (ios ? '&' : '?') + 'body=' + encodeURIComponent(text);
+  return text;
+}
+function openSms() {
+  openDialog('Exporter les dîners par SMS',`<div class="fields sms-export">
+    <strong>${esc(weekLabel())}</strong>
+    <label>Période <select id="smsRange"><option value="week">Toute la semaine</option><option value="remaining">À partir d’aujourd’hui</option></select></label>
+    <textarea id="smsText" aria-label="Texte du SMS" rows="8" readonly></textarea>
+    <p id="smsEmpty" role="status"></p>
+    <div class="actions"><button type="button" id="smsCopy">Copier le texte</button><a id="smsOpen" class="primary">Ouvrir les SMS</a></div>
+    <span id="smsFeedback" role="status"></span></div>`);
+  $('smsRange').onchange = refreshSms;
+  $('smsOpen').onclick = event => { if (!refreshSms()) event.preventDefault(); };
+  $('smsCopy').onclick = async () => {
+    const text = refreshSms();
+    if (!text) return;
+    const feedback = $('smsFeedback');
+    try {
+      await navigator.clipboard.writeText(text);
+      feedback.textContent = 'Texte copié.';
+    } catch {
+      $('smsText').focus();
+      $('smsText').select();
+      feedback.textContent = 'Texte sélectionné. Utilise la commande Copier de ton appareil.';
+    }
+  };
+  refreshSms();
+}
 function printSheet(title,html) {
   $('printArea').innerHTML=`<h1>${esc(title)}</h1>${html}`;
   if(dialog.open) dialog.close();
@@ -283,7 +325,11 @@ document.addEventListener('click',guard(async e=>{
     case 'close':dialog.close();break;
     case 'reset':
       if(confirm(`Vider le planning d’essai pour la semaine du ${formatWeekBoundary(monday,true)} ?`))
-        await change(next=>{next.weeks[monday]=weekDays();});
+        await change(next=>{
+          const days=weekDays(next.weeks[monday]);
+          for(const day of DAYS) for(const slot of Object.keys(SLOTS)) days[day][slot]=[];
+          next.weeks[monday]=days;
+        });
       break;
     case 'account':
       if(mode==='local')await firebaseDialog();
@@ -296,6 +342,7 @@ document.addEventListener('click',guard(async e=>{
     }
     case 'printShop':printSheet('Liste de courses',`<p>${weekLabel()} · ${$('shoppingPortions').value} personne(s) par repas</p>${shoppingHtml(currentShopping())}`);break;
     case 'printGuide':printSheet('Guide Air Fryer',`<p>Moulinex Easy Fry Mega 7,5 L</p><ul>${guideItems().map(([n,t,m,k])=>`<li><strong>${esc(n)}</strong> · ${t} °C · ${m} min. ${esc(k)}</li>`).join('')}</ul>`);break;
+    case 'smsWeek':openSms();break;
     case 'printWeek':{
       const days=weekDays(state.weeks[monday]);
       printSheet('Planning des repas',`<p>${weekLabel()}</p>`+DAYS.map(day=>`<div class="print-group"><h2>${day}</h2>`+
