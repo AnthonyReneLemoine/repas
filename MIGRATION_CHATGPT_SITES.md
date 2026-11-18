@@ -32,3 +32,30 @@ Ne pas copier de mot de passe ni de clé privée dans ce dépôt. La configurati
 3. Vérifier la lecture et l'écriture Firestore sans altérer les données existantes.
 4. Tester le planning, l'archivage et les exports sur ordinateur et mobile.
 5. Ne fusionner sur `main` qu'après validation.
+
+## Version privée de test du 18 novembre 2026
+
+Le site démarre avec deux recettes d’exemple. Cet essai se conserve dans le navigateur.
+« Connecter Firebase » utilise la configuration Web de repas-70a80 et le compte déjà autorisé.
+Le site lit les fiches de meals et les plannings de weekPlans, y compris les anciens dîners.
+Les changements connectés utilisent des documents distincts dans weekPlans, avec le préfixe
+essai-sites-v1-. Le site d’origine continue à utiliser ses propres identifiants.
+Les règles Firestore du dépôt sont conservées. Une opération de plus de 450 documents
+est refusée en entier.
+
+Les quantités des fiches et de la liste de courses sont réglables pour une, deux ou quatre
+personnes. Les ingrédients portant le même nom et la même unité sont cumulés pour
+chaque occurrence de la recette. La liste indique les fiches qui restent à compléter.
+Le guide Moulinex reprend 19 entrées du document cuisson_air_fryer.pdf du 5 novembre.
+Les commandes d’impression ouvrent le dialogue du navigateur au format A4.
+
+La sauvegarde JSON contient les fiches, les archives et toutes les semaines de l’essai
+actif. L’import valide le fichier avant de fusionner les données. Les identifiants
+communs sont remplacés après confirmation.
+
+### Lancer la version de test
+
+Avec Node.js 24, lancer `node --test tests/migration.test.mjs`, puis `node build.mjs`.
+Servir le répertoire dist avec un serveur HTTP local. Le dépôt conserve également
+index.html à la racine. Le site privé de test est accessible à l’adresse
+https://tableau-repas-anthony-test.alemoine.chatgpt.site.

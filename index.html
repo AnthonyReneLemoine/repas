@@ -1,90 +1,38 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tableau des repas</title>
-    <link rel="icon" type="image/png" href="eat.png" />
-    <link rel="stylesheet" href="styles.css?v=3" />
-  </head>
-  <body>
-    <div class="topbar">
-      <header class="header">
-        <h1>🍽️ Tableau des repas</h1>
-        <p>Petit-déjeuner, déjeuner et dîner : planifie ta semaine en glisser-déposer. <small class="app-version">v3</small></p>
-      </header>
-
-      <div class="auth-panel">
-        <section class="auth card" id="authCard">
-          <h2>Connexion</h2>
-          <form id="authForm" class="auth-form">
-            <input id="authEmail" type="email" placeholder="Email" required />
-            <input id="authPassword" type="password" placeholder="Mot de passe" required minlength="6" />
-            <div class="auth-actions">
-              <button type="submit">Se connecter</button>
-            </div>
-          </form>
-          <p class="auth-hint">Accès réservé au compte autorisé.</p>
-          <p id="authMessage" class="auth-message"></p>
-        </section>
-
-        <section class="session card hidden" id="sessionCard">
-          <p>Connecté avec <strong id="userEmail"></strong></p>
-          <button id="logoutBtn" class="action delete" type="button">Se déconnecter</button>
-        </section>
-      </div>
-    </div>
-
-    <main class="layout hidden" id="appLayout">
-      <section class="planner card">
-        <div class="planner-top-row">
-          <h2>Planning</h2>
-          <button id="resetWeekBtn" class="action delete" type="button">Reset semaine</button>
-        </div>
-        <div class="week-navigation" aria-label="Navigation entre les semaines">
-          <button id="prevWeekBtn" type="button" class="week-nav-btn" aria-label="Semaine précédente">←</button>
-          <button id="currentWeekBtn" type="button" class="week-current-btn">Cette semaine</button>
-          <strong id="weekRangeLabel" class="week-range-label"></strong>
-          <button id="nextWeekBtn" type="button" class="week-nav-btn" aria-label="Semaine suivante">→</button>
-        </div>
-        <div id="daysBoard" class="days-board"></div>
-      </section>
-
-      <section class="meals card">
-        <div class="meals-title-row">
-          <h2>Repas</h2>
-          <label class="toggle">
-            <input id="showArchived" type="checkbox" />
-            Voir archivés
-          </label>
-        </div>
-
-        <input id="mealSearch" type="search" placeholder="Rechercher une fiche repas..." />
-
-        <form id="mealForm" class="meal-form">
-          <p id="mealMessage" class="meal-message"></p>
-          <input id="mealName" name="name" type="text" placeholder="Nom du repas (ex : Nouilles sautées)" required />
-          <textarea id="mealNote" name="note" rows="2" placeholder="Note facultative"></textarea>
-          <button type="submit">Ajouter</button>
-        </form>
-
-        <ul id="mealsList" class="meals-list"></ul>
-      </section>
-    </main>
-
-    <dialog id="configDialog">
-      <form method="dialog" id="configForm" class="config-form">
-        <h3>Configuration Firebase</h3>
-        <p>Colle la configuration Firebase Web (objet JSON ou bloc <code>firebaseConfig</code>).</p>
-        <textarea id="firebaseConfigInput" rows="10" placeholder='{"apiKey":"...", "projectId":"..."}' required></textarea>
-        <menu>
-          <button value="cancel" formnovalidate>Annuler</button>
-          <button id="saveConfigBtn" value="default">Enregistrer</button>
-        </menu>
-      </form>
-    </dialog>
-
-    <script type="module" src="app.js?v=3"></script>
-  </body>
-</html>
-
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#254c3d"><title>Tableau des repas</title>
+  <link rel="icon" href="./eat.png"><link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><img src="./eat.png" alt=""><span>Tableau<br>des repas</span></div>
+    <nav aria-label="Cuisine"><button data-page="planning">Planning</button><button data-page="recettes">Recettes</button><button data-page="courses">Liste de courses</button><button data-page="guide">Guide Air Fryer</button></nav>
+    <div class="account"><span id="mode">Essai sur cet appareil</span><button id="account">Connecter Firebase</button></div>
+  </aside>
+  <main>
+    <header><div><p id="dateLabel"></p><h1 id="title">Planning</h1></div><button class="primary" id="newMeal">+ Nouvelle recette</button></header>
+    <p id="notice" role="status" aria-live="polite"></p>
+    <section data-view="planning">
+      <div class="toolbar"><div class="week-switch"><button data-shift="-1" aria-label="Semaine précédente">‹</button><strong class="weekLabel"></strong><button data-shift="1" aria-label="Semaine suivante">›</button></div><button data-today>Cette semaine</button><button id="printWeek">Imprimer le planning</button></div>
+      <div id="board"></div><div class="foot-actions"><button id="reset">Vider la semaine</button></div>
+    </section>
+    <section data-view="recettes" hidden>
+      <div class="toolbar"><input type="search" id="search" aria-label="Rechercher une recette" placeholder="Rechercher une recette…"><select id="filter" aria-label="Filtrer par appareil"></select><label><input type="checkbox" id="archived"> Inclure les archives</label></div>
+      <div id="recipes" class="grid"></div>
+    </section>
+    <section data-view="courses" hidden>
+      <div class="toolbar"><div class="week-switch"><button data-shift="-1" aria-label="Semaine précédente">‹</button><strong class="weekLabel"></strong><button data-shift="1" aria-label="Semaine suivante">›</button></div><label>Convives par repas <select id="shoppingPortions"></select></label></div>
+      <div id="shopping" class="paper"></div><div class="foot-actions"><button id="txt">Télécharger en TXT</button><button id="printShop">Imprimer / PDF A4</button></div>
+    </section>
+    <section data-view="guide" hidden>
+      <div class="toolbar"><strong>Moulinex Easy Fry Mega 7,5 L</strong><input id="guideSearch" type="search" aria-label="Rechercher un aliment" placeholder="Rechercher un aliment…"><button id="printGuide">Imprimer / PDF A4</button></div>
+      <div id="guide" class="grid"></div>
+    </section>
+    <footer><button id="export">Sauvegarder en JSON</button><button id="importBtn">Importer une sauvegarde</button><input type="file" id="importFile" accept=".json,application/json" hidden></footer>
+  </main>
+  <dialog id="dialog"><div class="dialog-top"><h2 id="dialogTitle"></h2><button id="close" aria-label="Fermer">×</button></div><div id="dialogBody"></div><p id="dialogError" role="alert"></p></dialog>
+  <article id="printArea"></article>
+  <script type="module" src="./app.js"></script>
+</body></html>

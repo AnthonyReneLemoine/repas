@@ -1,794 +1,335 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getFirestore,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { DAYS,SLOTS,EQUIPMENT,getMondayIsoForToday,getWeekDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
+import {guide} from './guide.mjs';
 
-const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-const MEAL_SLOTS = [
-  { id: 'breakfast', label: 'Petit-déjeuner' },
-  { id: 'lunch', label: 'Déjeuner' },
-  { id: 'dinner', label: 'Dîner' },
-];
-const ALLOWED_UID = 'ENgOZhuh0ca3tqeb0IbII2CCVzX2';
-const LEGACY_WEEK_DOC_IDS = ['currentWeek1', 'currentWeek2'];
-const CONFIG_KEY = 'firebaseConfig.dashboardRepas';
-
-const appLayoutEl = document.getElementById('appLayout');
-const authCardEl = document.getElementById('authCard');
-const sessionCardEl = document.getElementById('sessionCard');
-const authForm = document.getElementById('authForm');
-const authEmailInput = document.getElementById('authEmail');
-const authPasswordInput = document.getElementById('authPassword');
-const authMessageEl = document.getElementById('authMessage');
-const logoutBtn = document.getElementById('logoutBtn');
-const userEmailEl = document.getElementById('userEmail');
-
-const daysBoardEl = document.getElementById('daysBoard');
-const prevWeekBtn = document.getElementById('prevWeekBtn');
-const currentWeekBtn = document.getElementById('currentWeekBtn');
-const nextWeekBtn = document.getElementById('nextWeekBtn');
-const weekRangeLabelEl = document.getElementById('weekRangeLabel');
-const resetWeekBtn = document.getElementById('resetWeekBtn');
-const mealsListEl = document.getElementById('mealsList');
-const mealForm = document.getElementById('mealForm');
-const mealNameInput = document.getElementById('mealName');
-const mealNoteInput = document.getElementById('mealNote');
-const mealMessageEl = document.getElementById('mealMessage');
-const showArchivedInput = document.getElementById('showArchived');
-const mealSearchInput = document.getElementById('mealSearch');
-const configDialog = document.getElementById('configDialog');
-const configForm = document.getElementById('configForm');
-const configInput = document.getElementById('firebaseConfigInput');
-
-let db;
-let auth;
-let meals = [];
-let weekPlan = makeEmptyWeek();
-let mondayDateISO = getMondayIsoForToday();
-let unsubscribeMeals;
-let unsubscribeWeek;
-const dragState = {
-  mealId: '',
-  fromDay: '',
-  fromSlot: '',
-  fromList: false,
-};
-
-boot().catch((error) => {
-  console.error(error);
-  alert(`Erreur de démarrage : ${error.message}`);
-});
-
-async function boot() {
-  renderDayLanes();
-  updateWeekNavigation();
-  wireEvents();
-
-  const config = await ensureFirebaseConfig();
-  const app = initializeApp(config);
-  db = getFirestore(app);
-  auth = getAuth(app);
-
-  onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      await onSignedIn(user);
-      return;
-    }
-    onSignedOut();
-  });
+const $ = id => document.getElementById(id);
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const opt = (value,label,selected=false)=>`<option value="${esc(value)}"${selected?' selected':''}>${esc(label)}</option>`;
+const portions = n=>[1,2,4].map(v=>opt(v,`${v} pers.`,n===v)).join('');
+const empty = message=>`<p class="muted">${esc(message)}</p>`;
+const uiButton = (action,label,id='',classes='')=>`<button type="button" data-act="${action}" data-id="${esc(id)}" class="${classes}">${esc(label)}</button>`;
+const localKey = 'tableau-repas.essai.v1';
+let monday = getMondayIsoForToday(), page='planning', mode='local', remote=null, busy=false;
+let state=sampleState(monday), drag=null;
+const dialog=$('dialog');
+function message(msg,error=false) { $('notice').textContent=msg; $('notice').classList.toggle('error',error); }
+function showError(error) {
+  const msg=error.message || String(error);
+  if(dialog.open) $('dialogError').textContent=msg;
+  else message(msg,true);
 }
-
-function wireEvents() {
-  mealForm.addEventListener('submit', onCreateMeal);
-  showArchivedInput.addEventListener('change', render);
-  mealSearchInput?.addEventListener('input', render);
-  authForm.addEventListener('submit', onLogin);
-  logoutBtn.addEventListener('click', onLogout);
-  prevWeekBtn?.addEventListener('click', () => changeWeek(-1));
-  currentWeekBtn?.addEventListener('click', () => setActiveWeek(getMondayIsoForToday()));
-  nextWeekBtn?.addEventListener('click', () => changeWeek(1));
-  resetWeekBtn?.addEventListener('click', onResetWeekClick);
-
-  mealsListEl.addEventListener('dragover', (event) => {
-    event.preventDefault();
-    mealsListEl.classList.add('drag-over');
-
-    if (!dragState.fromList || !dragState.mealId) return;
-    if (isSearchActive()) return;
-
-    const targetCard = event.target.closest('.meal-card');
-    if (!targetCard || targetCard.dataset.mealId === dragState.mealId) return;
-
-    const draggedCard = mealsListEl.querySelector(`.meal-card[data-meal-id="${dragState.mealId}"]`);
-    if (!draggedCard) return;
-
-    const targetRect = targetCard.getBoundingClientRect();
-    const insertBefore = event.clientY < targetRect.top + targetRect.height / 2;
-    mealsListEl.insertBefore(draggedCard, insertBefore ? targetCard : targetCard.nextSibling);
-  });
-  mealsListEl.addEventListener('dragleave', () => mealsListEl.classList.remove('drag-over'));
-  mealsListEl.addEventListener('drop', async (event) => {
-    event.preventDefault();
-    mealsListEl.classList.remove('drag-over');
-
-    const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
-    const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
-    const fromSlot = dragState.fromSlot || event.dataTransfer.getData('fromSlot');
-
-    if (dragState.fromList && mealId) {
-      if (isSearchActive()) {
-        setMealMessage('Désactive la recherche pour réorganiser les fiches.', true);
-      } else {
-        await saveMealsOrderFromDom();
-        setMealMessage('Ordre des fiches mis à jour.');
+function openDialog(title,html) {
+  $('dialogTitle').textContent=title; $('dialogBody').innerHTML=html; $('dialogError').textContent='';
+  if(!dialog.open) dialog.showModal();
+}
+function localState() {
+  const saved=localStorage.getItem(localKey);
+  return saved ? readBackup(JSON.parse(saved)) : sampleState(getMondayIsoForToday());
+}
+function startLocal() {
+  mode='local'; state=localState(); render();
+}
+async function change(edit) {
+  if(busy) throw Error('Un enregistrement est déjà en cours.');
+  if(mode==='loading') throw Error('Chargement des données Firebase en cours.');
+  const next=structuredClone(state);
+  edit(next);
+  const changes=diff(state,next);
+  if(!changes.length) return;
+  busy=true;
+  try {
+    if(mode==='firebase') await remote.save(changes);
+    else {
+      const latest=localState();
+      for(const c of changes){
+        if(JSON.stringify(latest[c.kind][c.id]??null)!==JSON.stringify(c.old)) {
+          state=latest; render(); throw Error('Données modifiées dans un autre onglet. Rouvre la fiche.');
+        }
+        if(c.value===null) delete latest[c.kind][c.id];
+        else latest[c.kind][c.id]=c.value;
       }
-      resetDragState();
-      return;
+      localStorage.setItem(localKey,JSON.stringify(backup(latest))); state=latest; render();
     }
-
-    if (!mealId || !isValidSlot(fromDay, fromSlot)) return;
-
-    removePlannedMeal(mealId, fromDay, fromSlot);
-    await saveWeekPlan();
-    resetDragState();
-  });
-
-  daysBoardEl.addEventListener('dragover', (event) => {
-    const lane = event.target.closest('.day-dropzone');
-    if (!lane) return;
-    event.preventDefault();
-    lane.classList.add('drag-over');
-  });
-
-  daysBoardEl.addEventListener('dragleave', (event) => {
-    const lane = event.target.closest('.day-dropzone');
-    if (!lane) return;
-    lane.classList.remove('drag-over');
-  });
-
-  daysBoardEl.addEventListener('drop', async (event) => {
-    const lane = event.target.closest('.day-dropzone');
-    if (!lane) return;
-
-    event.preventDefault();
-    lane.classList.remove('drag-over');
-    const targetDay = lane.dataset.day;
-
-    const mealId = dragState.mealId || event.dataTransfer.getData('mealId');
-    const fromDay = dragState.fromDay || event.dataTransfer.getData('fromDay');
-    const fromSlot = dragState.fromSlot || event.dataTransfer.getData('fromSlot');
-    const targetSlot = lane.dataset.slot;
-    if (!mealId || !isValidSlot(targetDay, targetSlot)) return;
-
-    if (fromDay && !isValidSlot(fromDay, fromSlot)) return;
-    if (fromDay) removePlannedMeal(mealId, fromDay, fromSlot);
-
-    const dayItems = weekPlan[targetDay][targetSlot];
-    if (!dayItems.includes(mealId)) dayItems.push(mealId);
-
-    await saveWeekPlan();
-    resetDragState();
-  });
+  } finally {busy=false;}
 }
-
-async function onLogin(event) {
-  event.preventDefault();
-  const email = authEmailInput.value.trim();
-  const password = authPasswordInput.value;
-  setAuthMessage('Connexion en cours...');
-
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    authForm.reset();
-    setAuthMessage('');
-  } catch (error) {
-    setAuthMessage(`Connexion impossible : ${humanizeAuthError(error.code)}`);
-  }
+function weekLabel() {
+  const dates=getWeekDates(monday);
+  return `Du ${formatWeekBoundary(dates[0])} au ${formatWeekBoundary(dates[6],true)}`;
 }
-
-async function onLogout() {
-  await signOut(auth);
-}
-
-async function onResetWeekClick() {
-  if (!auth?.currentUser) return;
-  const ok = confirm(`Effacer toutes les fiches planifiées de la semaine du ${formatDateFr(mondayDateISO)} ?`);
-  if (!ok) return;
-
-  weekPlan = makeEmptyWeek();
-  await saveWeekPlan();
-  setMealMessage('Semaine réinitialisée.');
-}
-
-async function onSignedIn(user) {
-  if (user.uid !== ALLOWED_UID) {
-    await signOut(auth);
-    setAuthMessage('Ce compte n’est pas autorisé à accéder à ce planning.');
-    return;
-  }
-
-  userEmailEl.textContent = user.email || 'Utilisateur';
-  authCardEl.classList.add('hidden');
-  sessionCardEl.classList.remove('hidden');
-  appLayoutEl.classList.remove('hidden');
-
-  await migrateLegacyWeeks();
-  await ensureWeekDoc(mondayDateISO);
-  unsubscribeMeals?.();
-  unsubscribeWeek?.();
-  subscribeToMeals();
-  subscribeToWeek();
-}
-
-function onSignedOut() {
-  unsubscribeMeals?.();
-  unsubscribeWeek?.();
-  unsubscribeMeals = undefined;
-  unsubscribeWeek = undefined;
-
-  meals = [];
-  weekPlan = makeEmptyWeek();
-  mondayDateISO = getMondayIsoForToday();
-  updateWeekNavigation();
-  render();
-
-  appLayoutEl.classList.add('hidden');
-  sessionCardEl.classList.add('hidden');
-  authCardEl.classList.remove('hidden');
-  setAuthMessage('Connecte-toi pour gérer tes repas.');
-  setMealMessage('');
-}
-
-function setAuthMessage(message) {
-  authMessageEl.textContent = message;
-}
-
-function setMealMessage(message, isError = false) {
-  mealMessageEl.textContent = message;
-  mealMessageEl.classList.toggle('error', Boolean(isError));
-}
-
-function humanizeFirestoreError(code = '') {
-  if (code === 'permission-denied') return 'droits insuffisants (vérifie les règles Firestore).';
-  if (code === 'unauthenticated') return 'utilisateur non authentifié.';
-  if (code === 'unavailable') return 'service temporairement indisponible.';
-  return `erreur ${code || 'inconnue'}.`;
-}
-
-function humanizeAuthError(code = '') {
-  if (code === 'auth/invalid-credential') return 'identifiants invalides.';
-  if (code === 'auth/email-already-in-use') return 'cet email est déjà utilisé.';
-  if (code === 'auth/invalid-email') return 'email invalide.';
-  if (code === 'auth/weak-password') return 'mot de passe trop faible.';
-  return `erreur ${code || 'inconnue'}.`;
-}
-
-function renderDayLanes() {
-  const weekDates = getWeekDates(mondayDateISO);
-  updateWeekNavigation();
-  daysBoardEl.innerHTML = DAYS.map(
-    (day, index) => `
-      <article class="day-lane">
-        <div class="day-label">
-          <span class="day-name">${day}</span>
-          <span class="day-date">${formatDateFr(weekDates[index])}</span>
-        </div>
-         ${MEAL_SLOTS.map((slot) => `
-          <section class="meal-slot">
-            <h3 class="slot-label">${slot.label}</h3>
-            <div class="day-dropzone" data-day="${day}" data-slot="${slot.id}" aria-label="${day} — ${slot.label}"></div>
-          </section>
-        `).join('')}
-      </article>
-    `,
-  ).join('');
-}
-
-function updateWeekNavigation() {
-  if (!weekRangeLabelEl) return;
-  const dates = getWeekDates(mondayDateISO);
-  const start = formatWeekBoundary(dates[0]);
-  const end = formatWeekBoundary(dates[6], true);
-  weekRangeLabelEl.textContent = `Du ${start} au ${end}`;
-  currentWeekBtn?.classList.toggle('is-active', mondayDateISO === getMondayIsoForToday());
-}
-
-function getActiveWeekDocId() {
-  return `week-${normalizeMondayDate(mondayDateISO)}`;
-}
-
-async function setActiveWeek(mondayIsoDate) {
-  const nextMonday = normalizeMondayDate(mondayIsoDate);
-  if (nextMonday === mondayDateISO) return;
-  mondayDateISO = nextMonday;
-  weekPlan = makeEmptyWeek();
-  render();
-
-  if (!auth?.currentUser) return;
-
-  unsubscribeWeek?.();
-  await ensureWeekDoc(mondayDateISO);
-  subscribeToWeek();
-}
-
-async function changeWeek(offset) {
-  await setActiveWeek(shiftMonday(mondayDateISO, offset));
-}
-
-function subscribeToMeals() {
-  const mealsQuery = query(collection(db, 'meals'), orderBy('createdAt', 'desc'));
-  unsubscribeMeals = onSnapshot(mealsQuery, (snapshot) => {
-    meals = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    render();
-  });
-}
-
-function subscribeToWeek() {
-  const weekRef = doc(db, 'weekPlans', getActiveWeekDocId());
-  unsubscribeWeek = onSnapshot(weekRef, (snapshot) => {
-    const data = snapshot.data();
-    weekPlan = data?.days ? sanitizeWeek(data.days) : makeEmptyWeek();
-    render();
-  });
-}
-
-async function onCreateMeal(event) {
-  event.preventDefault();
-
-  if (!auth?.currentUser) {
-    setMealMessage('Tu dois être connecté pour ajouter un repas.', true);
-    return;
-  }
-
-  const name = mealNameInput.value.trim();
-  const note = mealNoteInput.value.trim();
-  if (!name) {
-    setMealMessage('Le nom du repas est obligatoire.', true);
-    return;
-  }
-
-  setMealMessage('Ajout en cours...');
-  try {
-    await addDoc(collection(db, 'meals'), {
-      name,
-      note,
-      archived: false,
-      sortOrder: getNextSortOrder(),
-      createdAt: serverTimestamp(),
-      ownerUid: auth.currentUser.uid,
-    });
-
-    mealForm.reset();
-    mealNameInput.focus();
-    setMealMessage('Repas ajouté ✅');
-  } catch (error) {
-    console.error(error);
-    setMealMessage(`Ajout impossible : ${humanizeFirestoreError(error.code)}`, true);
-  }
-}
-
+const labels={planning:'Planning',recettes:'Recettes',courses:'Liste de courses',guide:'Guide Air Fryer'};
 function render() {
-  renderDayLanes();
-  renderMealsList();
-  renderWeek();
+  $('title').textContent=labels[page];
+  document.querySelectorAll('[data-page]').forEach(b=>b.setAttribute('aria-current',b.dataset.page===page?'page':'false'));
+  document.querySelectorAll('[data-view]').forEach(s=>s.hidden=s.dataset.view!==page);
+  $('mode').textContent=({local:'Essai sur cet appareil',loading:'Connexion en cours…',firebase:'Essai Firebase synchronisé'})[mode];
+  $('account').textContent=mode==='local'?'Connecter Firebase':'Quitter Firebase';
+  document.querySelectorAll('.weekLabel').forEach(n=>n.textContent=weekLabel());
+  if(page==='planning') drawBoard();
+  if(page==='recettes') drawRecipes();
+  if(page==='courses') drawShopping();
+  if(page==='guide') drawGuide();
 }
-
-function renderMealsList() {
-  const showArchived = showArchivedInput.checked;
-  const searchTerm = normalizeMealName(mealSearchInput?.value || '');
-  const visibleMeals = getMealsOrderedBySort()
-    .filter((meal) => (showArchived ? true : !meal.archived))
-    .filter((meal) => {
-      if (!searchTerm) return true;
-      const haystack = normalizeMealName(`${meal.name} ${meal.note || ''}`);
-      return haystack.includes(searchTerm);
-    });
-
-  if (!visibleMeals.length) {
-    mealsListEl.innerHTML = '<p class="empty">Aucun repas disponible.</p>';
-    return;
-  }
-
-  mealsListEl.innerHTML = visibleMeals
-    .map((meal) => {
-      const escapedNote = meal.note ? `<p class="meal-note">${escapeHtml(meal.note)}</p>` : '';
-      return `
-        <li class="meal-card" draggable="true" data-meal-id="${meal.id}">
-          <div class="meal-header">
-            <h3 class="meal-name">${escapeHtml(meal.name)}</h3>
-            <small>${meal.archived ? 'Archivé' : 'Actif'}</small>
-          </div>
-          ${escapedNote}
-          <div class="meal-actions">
-            <button class="action" data-action="edit" data-id="${meal.id}" type="button">Modifier</button>
-            <button class="action" data-action="archive" data-id="${meal.id}" type="button">${meal.archived ? 'Désarchiver' : 'Archiver'}</button>
-            <button class="action delete" data-action="delete" data-id="${meal.id}" type="button">Supprimer</button>
-          </div>
-        </li>
-      `;
-    })
-    .join('');
-
-  mealsListEl.querySelectorAll('.meal-card').forEach((item) => {
-    item.addEventListener('dragstart', (event) => {
-      dragState.mealId = item.dataset.mealId || '';
-      dragState.fromDay = '';
-      dragState.fromSlot = '';
-      dragState.fromList = true;
-      event.dataTransfer.setData('mealId', item.dataset.mealId);
-      event.dataTransfer.setData('fromDay', '');
-      event.dataTransfer.setData('fromSlot', '');
-      event.dataTransfer.setData('fromList', 'true');
-    });
-    item.addEventListener('dragend', resetDragState);
-  });
-
-  mealsListEl.querySelectorAll('[data-action]').forEach((button) => {
-    button.addEventListener('click', onMealAction);
-  });
+function sortedMeals(includeArchived=false) {
+  return Object.entries(state.meals).filter(([,m])=>includeArchived||!m.archived)
+    .sort((a,b)=>a[1].sortOrder-b[1].sortOrder||a[1].name.localeCompare(b[1].name,'fr'));
 }
-
-function isSearchActive() {
-  return Boolean(mealSearchInput?.value?.trim());
+function drawBoard(){
+  const days=weekDays(state.weeks[monday]), dates=getWeekDates(monday);
+  $('board').innerHTML=`<div class="board-row board-head"><div>Jour</div>${Object.values(SLOTS).map(s=>`<div>${s}</div>`).join('')}</div>`+
+    DAYS.map((day,i)=>`<div class="board-row"><div class="day"><strong>${day}</strong><small>${formatWeekBoundary(dates[i])}</small></div>`+
+    Object.entries(SLOTS).map(([slot,label])=>`<div class="slot" data-day="${day}" data-slot="${slot}"><span class="slot-name">${label}</span>`+
+      days[day][slot].filter(id=>state.meals[id]).map(id=>`<div draggable="true" class="planned" data-id="${esc(id)}">
+        ${uiButton('detail',state.meals[id].name,id)}<button data-act="remove" data-id="${esc(id)}" aria-label="Retirer ${esc(state.meals[id].name)}">×</button></div>`).join('')+
+      `<button class="add" data-act="pick" aria-label="Ajouter un repas, ${day}, ${label}">+ Ajouter</button></div>`).join('')+'</div>').join('');
 }
-
-function renderWeek() {
-  DAYS.forEach((day) => MEAL_SLOTS.forEach((slot) => {
-    const lane = daysBoardEl.querySelector(`.day-dropzone[data-day="${day}"][data-slot="${slot.id}"]`);
-    if (!lane) return;
-
-    const cards = (weekPlan[day][slot.id] || [])
-      .map((mealId) => meals.find((meal) => meal.id === mealId))
-      .filter(Boolean)
-      .map(
-        (meal) => `
-          <article class="meal-card" draggable="true" data-meal-id="${meal.id}" data-from-day="${day}" data-from-slot="${slot.id}">
-            <h4 class="meal-name">${escapeHtml(meal.name)}</h4>
-            ${meal.note ? `<p class="meal-note">${escapeHtml(meal.note)}</p>` : ''}
-          </article>
-        `,
-      )
-      .join('');
-
-    lane.innerHTML = cards || '<p class="empty">Dépose un repas ici</p>';
-
-    lane.querySelectorAll('.meal-card').forEach((card) => {
-      card.addEventListener('dragstart', (event) => {
-        dragState.mealId = card.dataset.mealId || '';
-        dragState.fromDay = card.dataset.fromDay || '';
-        dragState.fromSlot = card.dataset.fromSlot || '';
-        dragState.fromList = false;
-        event.dataTransfer.setData('mealId', card.dataset.mealId);
-        event.dataTransfer.setData('fromDay', card.dataset.fromDay || '');
-        event.dataTransfer.setData('fromSlot', card.dataset.fromSlot || '');
-      });
-      card.addEventListener('dragend', resetDragState);
-    });
-  }));
+function drawRecipes(){
+  const search=fold($('search').value), filter=$('filter').value;
+  const list=sortedMeals($('archived').checked).filter(([,m])=>(!filter||m.equipment.includes(filter))&&
+    fold([m.name,m.note,...m.ingredients.map(i=>i.name)].join(' ')).includes(search));
+  $('recipes').innerHTML=list.map(([id,m])=>`<article class="card" draggable="true" data-id="${esc(id)}">
+    ${uiButton('detail',m.name,id,'dish-title')}${m.archived?'<small>Archivée</small>':''}
+    <div>${m.equipment.map(e=>`<span class="tag">${esc(e)}</span>`).join(' ')}</div>
+    ${m.note?`<p class="note">${esc(m.note)}</p>`:''}<small>${m.portions} personnes · ${m.ingredients.length} ingrédient${m.ingredients.length>1?'s':''}</small>
+    <div class="actions">${uiButton('edit','Modifier',id)}${!m.archived?uiButton('plan','Planifier',id):''}</div></article>`).join('')||empty('Aucune recette pour cette sélection.');
 }
-
-function getMealsOrderedBySort() {
-  return [...meals].sort((a, b) => {
-    const orderA = Number.isFinite(a.sortOrder) ? a.sortOrder : Number.MAX_SAFE_INTEGER;
-    const orderB = Number.isFinite(b.sortOrder) ? b.sortOrder : Number.MAX_SAFE_INTEGER;
-    if (orderA !== orderB) return orderA - orderB;
-
-    const nameA = (a.name || '').toLowerCase();
-    const nameB = (b.name || '').toLowerCase();
-    return nameA.localeCompare(nameB, 'fr');
-  });
+const ingredientText=(i,factor=1)=>i.qty===null?[i.name,i.unit].filter(Boolean).join(' · '):[amount(i.qty*factor),i.unit,'—',i.name].filter(Boolean).join(' ');
+function currentShopping(){return shopping(state,monday,Number($('shoppingPortions').value));}
+function shoppingHtml({items,missing}) {
+  return (items.length?`<ul>${items.map(i=>`<li>${esc(ingredientText(i))}</li>`).join('')}</ul>`:empty('Aucun ingrédient renseigné pour les repas de cette semaine.'))+
+    (missing.length?`<p>Ingrédients à compléter pour ${esc(missing.join(', '))}.</p>`:'');
 }
-
-function getNextSortOrder() {
-  const orders = meals.map((meal) => meal.sortOrder).filter((value) => Number.isFinite(value));
-  return orders.length ? Math.max(...orders) + 1 : 0;
+function drawShopping(){ $('shopping').innerHTML=shoppingHtml(currentShopping()); }
+function guideItems(){return guide.filter(row=>fold(row[0]).includes(fold($('guideSearch').value)));}
+function drawGuide(){ $('guide').innerHTML=guideItems().map(([name,temp,time,note])=>`<article class="card"><h2 class="dish-title">${esc(name)}</h2>
+  <span class="guide-value">${temp} °C · ${time} min</span><p>${esc(note)}</p></article>`).join('')||empty('Aucun aliment trouvé.'); }
+function printSheet(title,html) {
+  $('printArea').innerHTML=`<h1>${esc(title)}</h1>${html}`;
+  if(dialog.open) dialog.close();
+  window.print();
 }
-
-async function saveMealsOrderFromDom() {
-  const domIds = [...mealsListEl.querySelectorAll('.meal-card')].map((card) => card.dataset.mealId).filter(Boolean);
-  if (!domIds.length) return;
-
-  const allOrderedIds = getMealsOrderedBySort().map((meal) => meal.id);
-  const remainingIds = allOrderedIds.filter((id) => !domIds.includes(id));
-  const nextIds = [...domIds, ...remainingIds];
-
-  await Promise.all(
-    nextIds.map((mealId, index) => updateDoc(doc(db, 'meals', mealId), { sortOrder: index })),
-  );
+function download(name,data,type){
+  const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');
+  a.href=url; a.download=name; a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
-
-function resetDragState() {
-  dragState.mealId = '';
-  dragState.fromDay = '';
-  dragState.fromSlot = '';
-  dragState.fromList = false;
+function detailBody(m,n){
+  return `<div class="recipe-detail"><p>${esc(m.equipment.join(' · '))}</p>${m.note?`<p class="note">${esc(m.note)}</p>`:''}
+    <h3>Ingrédients</h3>${m.ingredients.length?`<ul>${m.ingredients.map(i=>`<li>${esc(ingredientText(i,n/m.portions))}</li>`).join('')}</ul>`:empty('Aucun ingrédient renseigné.')}
+    <h3>Préparation</h3>${m.steps.length?`<ol>${m.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol>`:empty('Aucune étape renseignée.')}</div>`;
 }
-
-async function onMealAction(event) {
-  const button = event.currentTarget;
-  const id = button.dataset.id;
-  const action = button.dataset.action;
-  const meal = meals.find((item) => item.id === id);
-  if (!meal) return;
-
-  if (action === 'edit') {
-    const name = prompt('Nouveau nom du repas :', meal.name)?.trim();
-    if (!name) return;
-    const note = prompt('Nouvelle note :', meal.note || '') ?? '';
-    await updateDoc(doc(db, 'meals', id), { name, note: note.trim() });
-  }
-
-  if (action === 'archive') {
-    await updateDoc(doc(db, 'meals', id), { archived: !meal.archived });
-  }
-
-  if (action === 'delete') {
-    const ok = confirm(`Supprimer définitivement "${meal.name}" ?`);
-    if (!ok) return;
-
-    await deleteDoc(doc(db, 'meals', id));
-    DAYS.forEach((day) => {
-      MEAL_SLOTS.forEach((slot) => removePlannedMeal(id, day, slot.id));
-    });
-    await saveWeekPlan();
-  }
+function detail(id,n=state.meals[id]?.portions){
+  const m=state.meals[id]; if(!m) throw Error('Cette recette a été supprimée.');
+  openDialog(m.name,`<label>Quantités pour <select id="scale">${portions(n)}</select></label>${detailBody(m,n)}
+    <div class="actions">${uiButton('edit','Modifier',id)}<button id="printRecipe">Imprimer / PDF A4</button>
+    ${uiButton('archive',m.archived?'Désarchiver':'Archiver',id)}${uiButton('delete','Supprimer',id,'danger')}</div>`);
+  $('scale').onchange=()=>detail(id,Number($('scale').value));
+  $('printRecipe').onclick=()=>printSheet(m.name,`<p>${n} personne${n>1?'s':''}</p>${detailBody(m,n)}`);
 }
-
-function normalizeMealName(name) {
-  return name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
+function ingredientRow(i={name:'',qty:null,unit:''}){
+  return `<div class="ingredient"><input aria-label="Ingrédient" placeholder="Ingrédient" maxlength="160" value="${esc(i.name)}">
+  <input type="number" step="any" min="0.000001" aria-label="Quantité" placeholder="Qté" value="${esc(i.qty??'')}">
+  <input aria-label="Unité" placeholder="g, ml…" maxlength="60" value="${esc(i.unit)}">
+  <button type="button" data-act="dropIngredient" aria-label="Retirer cet ingrédient">×</button></div>`;
 }
-
-async function migrateLegacyWeeks() {
-  let previousTargetMonday = '';
-  for (let index = 0; index < LEGACY_WEEK_DOC_IDS.length; index += 1) {
-    const legacyId = LEGACY_WEEK_DOC_IDS[index];
-    const legacySnap = await getDoc(doc(db, 'weekPlans', legacyId));
-    if (!legacySnap.exists()) continue;
-
-    const legacyData = legacySnap.data() || {};
-    const fallbackMonday = shiftMonday(getMondayIsoForToday(), index);
-    let legacyMonday = normalizeMondayDate(legacyData.mondayDate, fallbackMonday);
-    if (legacyMonday === previousTargetMonday) {
-      legacyMonday = shiftMonday(previousTargetMonday, 1);
+function editRecipe(id) {
+  const original=id?state.meals[id]:null, m=original||recipe({name:''});
+  openDialog(id?'Modifier la recette':'Nouvelle recette',`<form id="editForm">
+  <label>Nom du repas<input name="name" maxlength="160" value="${esc(m.name)}" required></label>
+  <label>Note<textarea name="note" rows="2" maxlength="5000">${esc(m.note)}</textarea></label>
+  <label>Quantités de base<select name="portions">${portions(m.portions)}</select></label>
+  <fieldset><legend>Appareils</legend>${EQUIPMENT.map(e=>`<label><input type="checkbox" name="equipment" value="${esc(e)}" ${m.equipment.includes(e)?'checked':''}> ${esc(e)}</label>`).join('')}</fieldset>
+  <div class="fields"><strong>Ingrédients</strong><div class="fields" id="ingredients">${(m.ingredients.length?m.ingredients:[undefined]).map(ingredientRow).join('')}</div>
+  <button type="button" id="addIngredient">+ Ajouter un ingrédient</button></div>
+  <label>Étapes, une par ligne<textarea name="steps" rows="4">${esc(m.steps.join('\n'))}</textarea></label>
+  <button class="primary">Enregistrer la recette</button></form>`);
+  $('addIngredient').onclick=()=>{ $('ingredients').insertAdjacentHTML('beforeend',ingredientRow()); $('ingredients').lastElementChild.firstElementChild.focus(); };
+  $('editForm').onsubmit=guard(async event=>{
+    event.preventDefault(); const f=new FormData(event.currentTarget);
+    const ingredients=[];
+    for(const row of $('ingredients').children){
+      const [name,q,unit]=Array.from(row.querySelectorAll('input'),i=>i.value.trim());
+      if(!name && !q && !unit) continue;
+      if(!name) throw Error('Renseigne le nom de chaque ingrédient.');
+      ingredients.push({name,qty:q?Number(q):null,unit});
     }
-    previousTargetMonday = legacyMonday;
-    const targetRef = doc(db, 'weekPlans', `week-${legacyMonday}`);
-    const targetSnap = await getDoc(targetRef);
-    if (targetSnap.exists()) continue;
-
-    await setDoc(targetRef, {
-      days: sanitizeWeek(legacyData.days),
-      mondayDate: legacyMonday,
-      migratedFrom: legacyId,
+    const name=f.get('name').trim(); if(!name) throw Error('Renseigne le nom du repas.');
+    await change(next=>{
+      if(id && JSON.stringify(next.meals[id])!==JSON.stringify(original)) throw Error('La recette a changé. Rouvre sa fiche.');
+      const order=Object.values(next.meals).reduce((max,r)=>Math.max(max,r.sortOrder),-1);
+      next.meals[id||crypto.randomUUID()]=recipe({...m,name,note:f.get('note').trim(),equipment:f.getAll('equipment'),
+        portions:Number(f.get('portions')), ingredients, steps:f.get('steps').split('\n').map(s=>s.trim()).filter(Boolean),
+        sortOrder:id?m.sortOrder:order+1});
     });
+    dialog.close();message('Recette enregistrée.');
+  });
+}
+function changeSlot(next,key,day,slot,fn){
+  const days=weekDays(next.weeks[key]); fn(days[day][slot]); next.weeks[key]=days;
+}
+async function assign(id,key,day,slot,from=null) {
+  await change(next=>{
+    if(!next.meals[id]) throw Error('Repas introuvable.');
+    if(from) changeSlot(next,key,from.day,from.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);});
+    changeSlot(next,key,day,slot,ids=>{if(!ids.includes(id)) ids.push(id);});
+  });
+}
+function pick(day,slot){
+  const week=monday;
+  openDialog(`${day} · ${SLOTS[slot]}`,`<div class="meal-picker"><input id="pickSearch" type="search" placeholder="Rechercher un repas…" aria-label="Rechercher un repas"><div class="meal-picker" id="pickList"></div></div>`);
+  function update(){
+    const rows=sortedMeals().filter(([,m])=>fold(m.name).includes(fold($('pickSearch').value)));
+    $('pickList').innerHTML=rows.map(([id,m])=>`<button data-pick="${esc(id)}">${esc(m.name)}</button>`).join('')||empty('Aucun repas disponible.');
   }
+  $('pickSearch').oninput=update;update();
+  $('pickList').onclick=guard(async e=>{const btn=e.target.closest('[data-pick]');if(!btn)return;await assign(btn.dataset.pick,week,day,slot);dialog.close();message('Repas planifié.');});
+}
+function plan(id){
+  const week=monday;
+  openDialog('Planifier le repas',`<form id="planForm"><strong>${esc(state.meals[id].name)}</strong><span>${esc(weekLabel())}</span>
+    <label>Jour<select name="day">${DAYS.map(d=>opt(d,d)).join('')}</select></label>
+    <label>Repas<select name="slot">${Object.entries(SLOTS).map(([k,v])=>opt(k,v,k==='dinner')).join('')}</select></label>
+    <button class="primary">Ajouter au planning</button></form>`);
+  $('planForm').onsubmit=guard(async e=>{e.preventDefault();const f=new FormData(e.currentTarget);
+    await assign(id,week,f.get('day'),f.get('slot'));dialog.close();message('Repas planifié.');});
+}
+function guard(fn){return async event=>{try{await fn(event);}catch(error){showError(error);}};}
+
+
+const sessionKey='tableau-repas.firebase-actif';
+async function configureFirebase() {
+  const api=await import('./firebase-store.mjs');
+  if(remote) return;
+  remote=api.connect({
+    data(s){
+      state=s;mode='firebase';sessionStorage.setItem(sessionKey,'1');
+      if(dialog.open&&$('loginForm'))dialog.close();
+      render();
+    },
+    signedOut(){
+      sessionStorage.removeItem(sessionKey);
+      if(mode!=='local'){startLocal();message('Retour à l’essai sur cet appareil.');}
+    },
+    error(error){sessionStorage.removeItem(sessionKey);startLocal();showError(error);}
+  });
+}
+async function firebaseDialog(){
+  openDialog('Connexion Firebase',`<p>Les recettes et semaines existantes servent de point de départ. Les changements de cet essai sont synchronisés dans des documents réservés au test.</p>
+    <form id="loginForm">
+    <label>Adresse e-mail<input name="email" type="email" autocomplete="username" required></label>
+    <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="primary" disabled>Connexion au service…</button></form>`);
+  await configureFirebase();
+  const loginForm=$('loginForm');
+  if(!loginForm || !dialog.open) return;
+  const submit=loginForm.querySelector('button');
+  submit.textContent='Se connecter';submit.disabled=false;
+  loginForm.onsubmit=guard(async e=>{
+    e.preventDefault();const form=e.currentTarget, f=new FormData(form), btn=form.querySelector('button');btn.disabled=true;
+    try{
+      await remote.login(f.get('email').trim(),f.get('password'));
+      if(mode!=='firebase'){mode='loading';render();}
+      if(dialog.open && $('loginForm'))dialog.close();
+    } catch(error){
+      if(mode==='loading')startLocal();
+      if(error.code?.startsWith('auth/')) throw Error(`Connexion Firebase refusée (${error.code}).`);
+      throw error;
+    } finally {btn.disabled=false;}
+  });
 }
 
-async function ensureWeekDoc(mondayIsoDate) {
-  const safeMonday = normalizeMondayDate(mondayIsoDate);
-  const weekRef = doc(db, 'weekPlans', `week-${safeMonday}`);
-  const snap = await getDoc(weekRef);
-  if (!snap.exists()) {
-    await setDoc(weekRef, { days: makeEmptyWeek(), mondayDate: safeMonday });
+document.addEventListener('click',guard(async e=>{
+  const button=e.target.closest('button');if(!button)return;
+  if(button.dataset.page){page=button.dataset.page;message('');render();return;}
+  if(button.hasAttribute('data-today')||button.dataset.shift){monday=button.dataset.shift?shiftMonday(monday,Number(button.dataset.shift)):getMondayIsoForToday();render();return;}
+  const {act,id}=button.dataset, slot=button.closest('.slot');
+  switch(act){
+    case 'detail': detail(id);return;
+    case 'edit': editRecipe(id);return;
+    case 'plan': plan(id);return;
+    case 'pick': pick(slot.dataset.day,slot.dataset.slot);return;
+    case 'remove':
+      await change(next=>changeSlot(next,monday,slot.dataset.day,slot.dataset.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);}));
+      message('Repas retiré du créneau.');return;
+    case 'dropIngredient':button.closest('.ingredient').remove();return;
+    case 'archive':
+      await change(next=>{next.meals[id].archived=!next.meals[id].archived;});dialog.close();message('Archivage mis à jour.');return;
+    case 'delete':
+      if(!confirm(`Supprimer « ${state.meals[id].name} » et ses occurrences dans le planning d’essai ?`))return;
+      await change(next=>{delete next.meals[id];for(const days of Object.values(next.weeks))
+        for(const slots of Object.values(days))for(const key of Object.keys(slots))slots[key]=slots[key].filter(v=>v!==id);});
+      dialog.close();message('Recette supprimée de cet essai.');return;
   }
-}
-
-async function saveWeekPlan() {
-  await setDoc(
-    doc(db, 'weekPlans', getActiveWeekDocId()),
-    { days: sanitizeWeek(weekPlan), mondayDate: normalizeMondayDate(mondayDateISO) },
-    { merge: true },
-  );
-}
-
-function makeEmptyWeek() {
-  return Object.fromEntries(DAYS.map((day) => [
-    day, Object.fromEntries(MEAL_SLOTS.map((slot) => [slot.id, []])),
-  ]));
-}
-
-function sanitizeWeek(rawWeek) {
-  const safe = makeEmptyWeek();
-  DAYS.forEach((day) => {
-    // Les anciens plannings contenaient uniquement les dîners.
-    const rawDay = Array.isArray(rawWeek?.[day])
-      ? { dinner: rawWeek[day] }
-      : rawWeek?.[day];
-    MEAL_SLOTS.forEach((slot) => {
-      const values = Array.isArray(rawDay?.[slot.id]) ? rawDay[slot.id] : [];
-      safe[day][slot.id] = [...new Set(values.filter((value) => typeof value === 'string' && value))];
-    });
-  });
-  return safe;
-}
-
-function isValidSlot(day, slot) {
-  return DAYS.includes(day) && MEAL_SLOTS.some((item) => item.id === slot);
-}
-
-function removePlannedMeal(mealId, day, slot) {
-  if (!isValidSlot(day, slot)) return;
-  weekPlan[day][slot] = weekPlan[day][slot].filter((id) => id !== mealId);
-}
-
-function getMondayIsoForToday() {
-  const now = new Date();
-  const offset = (now.getDay() + 6) % 7;
-  now.setDate(now.getDate() - offset);
-  return formatDateToLocalIso(now);
-}
-
-function sanitizeMondayDate(value, fallback = getMondayIsoForToday()) {
-  if (typeof value !== 'string') return fallback;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return fallback;
-  const parsed = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return fallback;
-  return value;
-}
-
-function normalizeMondayDate(value, fallback = getMondayIsoForToday()) {
-  const safeValue = sanitizeMondayDate(value, fallback);
-  const parsed = new Date(`${safeValue}T12:00:00`);
-  const offset = (parsed.getDay() + 6) % 7;
-  parsed.setDate(parsed.getDate() - offset);
-  return formatDateToLocalIso(parsed);
-}
-
-function shiftMonday(mondayIsoDate, weekOffset) {
-  const dateObj = new Date(`${normalizeMondayDate(mondayIsoDate)}T12:00:00`);
-  dateObj.setDate(dateObj.getDate() + weekOffset * 7);
-  return formatDateToLocalIso(dateObj);
-}
-
-function getWeekDates(mondayIsoDate) {
-  const base = new Date(`${sanitizeMondayDate(mondayIsoDate)}T12:00:00`);
-  return DAYS.map((_, index) => {
-    const next = new Date(base);
-    next.setDate(base.getDate() + index);
-    return formatDateToLocalIso(next);
-  });
-}
-
-function formatDateFr(isoDate) {
-  const dateObj = new Date(`${sanitizeMondayDate(isoDate)}T12:00:00`);
-  return dateObj.toLocaleDateString('fr-FR');
-}
-
-function formatWeekBoundary(isoDate, includeYear = false) {
-  const dateObj = new Date(`${isoDate}T12:00:00`);
-  return dateObj.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    ...(includeYear ? { year: 'numeric' } : {}),
-  });
-}
-
-function formatDateToLocalIso(dateObj) {
-  const year = dateObj.getFullYear();
-  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const day = String(dateObj.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-async function ensureFirebaseConfig() {
-  const existing = localStorage.getItem(CONFIG_KEY);
-  if (existing) {
-    try {
-      return validateFirebaseConfig(JSON.parse(existing));
-    } catch {
-      localStorage.removeItem(CONFIG_KEY);
+  switch(button.id){
+    case 'newMeal':editRecipe();break;
+    case 'close':dialog.close();break;
+    case 'reset':
+      if(confirm(`Vider le planning d’essai pour la semaine du ${formatWeekBoundary(monday,true)} ?`))
+        await change(next=>{next.weeks[monday]=weekDays();});
+      break;
+    case 'account':
+      if(mode==='local')await firebaseDialog();
+      else {await remote.logout();startLocal();}
+      break;
+    case 'txt':{
+      const {items,missing}=currentShopping();
+      download(`courses-${monday}.txt`,[weekLabel(),`${$('shoppingPortions').value} personne(s) par repas`,'',
+        ...items.map(i=>ingredientText(i)),...(missing.length?['','Ingrédients à compléter',...missing]:[])].join('\n'),'text/plain;charset=utf-8');break;
     }
+    case 'printShop':printSheet('Liste de courses',`<p>${weekLabel()} · ${$('shoppingPortions').value} personne(s) par repas</p>${shoppingHtml(currentShopping())}`);break;
+    case 'printGuide':printSheet('Guide Air Fryer',`<p>Moulinex Easy Fry Mega 7,5 L</p><ul>${guideItems().map(([n,t,m,k])=>`<li><strong>${esc(n)}</strong> · ${t} °C · ${m} min. ${esc(k)}</li>`).join('')}</ul>`);break;
+    case 'printWeek':{
+      const days=weekDays(state.weeks[monday]);
+      printSheet('Planning des repas',`<p>${weekLabel()}</p>`+DAYS.map(day=>`<div class="print-group"><h2>${day}</h2>`+
+        Object.entries(SLOTS).map(([k,label])=>`<div><strong>${label}</strong> · ${days[day][k].map(id=>state.meals[id]?.name).filter(Boolean).map(esc).join(', ')||'—'}</div>`).join('')+'</div>').join(''));break;
+    }
+    case 'export':download(`repas-${monday}.json`,JSON.stringify(backup(state),null,2),'application/json');break;
+    case 'importBtn':$('importFile').click();break;
   }
-
-  configDialog.showModal();
-  const result = await waitDialogClose(configDialog);
-  if (result === 'cancel') {
-    throw new Error('Configuration Firebase manquante.');
-  }
-
-  const parsed = parseFirebaseConfigInput(configInput.value.trim());
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(parsed));
-  return parsed;
-}
-
-function parseFirebaseConfigInput(rawValue) {
-  if (!rawValue) {
-    throw new Error('Configuration Firebase vide.');
-  }
-
-  try {
-    return validateFirebaseConfig(JSON.parse(rawValue));
-  } catch {
-    // Continue avec parsing objet JS
-  }
-
-  const firstBrace = rawValue.indexOf('{');
-  const lastBrace = rawValue.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    throw new Error('Configuration Firebase invalide : objet introuvable.');
-  }
-
-  const objectLiteral = rawValue.slice(firstBrace, lastBrace + 1);
-  const parsedObject = {};
-  const supportedKeys = [
-    'apiKey',
-    'authDomain',
-    'projectId',
-    'storageBucket',
-    'messagingSenderId',
-    'appId',
-    'measurementId',
-  ];
-
-  supportedKeys.forEach((key) => {
-    const pattern = new RegExp(`["']?${key}["']?\\s*:\\s*(["'])(.*?)\\1`);
-    const match = objectLiteral.match(pattern);
-    if (match) parsedObject[key] = match[2];
-  });
-
-  if (!Object.keys(parsedObject).length) {
-    throw new Error('Le format de la configuration Firebase est invalide.');
-  }
-
-  return validateFirebaseConfig(parsedObject);
-}
-
-function validateFirebaseConfig(config) {
-  if (!config || typeof config !== 'object') {
-    throw new Error('Configuration Firebase invalide.');
-  }
-
-  const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
-  const missing = requiredKeys.filter((key) => typeof config[key] !== 'string' || !config[key].trim());
-  if (missing.length) {
-    throw new Error(`Configuration Firebase incomplète : ${missing.join(', ')}`);
-  }
-
-  return config;
-}
-
-function waitDialogClose(dialog) {
-  return new Promise((resolve) => {
-    const onClose = () => {
-      dialog.removeEventListener('close', onClose);
-      resolve(dialog.returnValue);
-    };
-    dialog.addEventListener('close', onClose);
-  });
-}
-
-function escapeHtml(value) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-configForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  configDialog.close('default');
+}));
+$('importFile').onchange=guard(async e=>{
+  const file=e.target.files[0];e.target.value='';if(!file)return;
+  const incoming=readBackup(JSON.parse(await file.text()));
+  const count=Object.keys(incoming.meals).length, weeks=Object.keys(incoming.weeks).length;
+  if(!confirm(`Importer ${count} recette(s) et ${weeks} semaine(s) dans cet essai ? Les fiches et semaines de même identifiant seront remplacées.`))return;
+  await change(next=>{Object.assign(next.meals,incoming.meals);Object.assign(next.weeks,incoming.weeks);});
+  message('Sauvegarde importée.');
 });
+document.addEventListener('dragstart',e=>{
+  const item=e.target.closest('[draggable=true]');if(!item)return;
+  const slot=item.closest('.slot');drag={id:item.dataset.id,week:monday,from:slot?{...slot.dataset}:null};
+  e.dataTransfer.setData('text/plain',item.dataset.id);e.dataTransfer.effectAllowed='move';
+});
+document.addEventListener('dragover',e=>{
+  if(!drag)return;
+  const tab=e.target.closest('[data-page]');
+  if(tab && ['planning','recettes'].includes(tab.dataset.page) && tab.dataset.page!==page){page=tab.dataset.page;render();}
+  const target=e.target.closest('.slot,#recipes .card,#recipes');
+  if(target){e.preventDefault();target.classList.add('over');}
+});
+document.addEventListener('dragleave',e=>e.target.closest('.over')?.classList.remove('over'));
+document.addEventListener('dragend',()=>{drag=null;document.querySelectorAll('.over').forEach(n=>n.classList.remove('over'));});
+document.addEventListener('drop',guard(async e=>{
+  if(!drag)return;e.preventDefault();
+  const {id,from,week}=drag;drag=null;
+  document.querySelectorAll('.over').forEach(n=>n.classList.remove('over'));
+  const target=e.target.closest('.slot');
+  if(target){await assign(id,week,target.dataset.day,target.dataset.slot,from);return;}
+  if(!e.target.closest('#recipes'))return;
+  if(from){await change(next=>changeSlot(next,week,from.day,from.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);}));return;}
+  const before=e.target.closest('.card')?.dataset.id;if(!before||id===before)return;
+  await change(next=>{
+    const ids=sortedMeals(true).map(([k])=>k).filter(k=>k!==id);
+    ids.splice(ids.indexOf(before),0,id);ids.forEach((k,i)=>{next.meals[k].sortOrder=i;});
+  });
+}));
+$('search').oninput=drawRecipes;$('filter').onchange=drawRecipes;$('archived').onchange=drawRecipes;
+$('guideSearch').oninput=drawGuide;$('shoppingPortions').onchange=drawShopping;
+$('filter').innerHTML=opt('','Tous les appareils')+EQUIPMENT.map(e=>opt(e,e)).join('');
+$('shoppingPortions').innerHTML=portions(2);
+$('dateLabel').textContent=new Intl.DateTimeFormat('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date());
+window.addEventListener('storage',guard(e=>{if(e.key===localKey && mode==='local'){state=localState();render();}}));
+try{startLocal();}catch(error){render();showError(error);}
 
+
+if(sessionStorage.getItem(sessionKey)){
+  mode='loading';render();
+  configureFirebase().catch(error=>{startLocal();showError(error);});
+}
