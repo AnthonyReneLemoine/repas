@@ -39,10 +39,11 @@ test('les transactions Firestore simulées isolent les données et refusent une 
     const sdk=await import('./sdk-simule.mjs');
     let state,error;
     const db=connect({data:s=>{state=s;},signedOut:()=>{},error:e=>{error=e;}});
-    await sdk.session('autre-compte');
+    await assert.rejects(()=>db.loginWithGoogle(),/droits/);
     assert.match(error.message,/droits/);
     await assert.rejects(()=>db.save([]),/autorisé/);
-    await sdk.session('ENgOZhuh0ca3tqeb0IbII2CCVzX2');
+    sdk.selectGoogleAccount('ENgOZhuh0ca3tqeb0IbII2CCVzX2');
+    await db.loginWithGoogle();
     assert.deepEqual(state.weeks[monday].Lundi.dinner,['original']);
     assert.equal(sdk.writes.length,0);
     const before=structuredClone(state), next=structuredClone(state);

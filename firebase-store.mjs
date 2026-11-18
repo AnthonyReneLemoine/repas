@@ -1,6 +1,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
   getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
@@ -77,6 +79,12 @@ export function connect(callbacks) {
     stops.push(onSnapshot(collection(db,'weekPlans'), s=>{weekDocs=s.docs; publish();}, failed));
   });
   return {
+    async loginWithGoogle() {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      if (result.user.uid !== ALLOWED_UID) throw Error('Ce compte Google ne dispose pas des droits sur ce planning.');
+    },
     async login(email,password) {
       const result = await signInWithEmailAndPassword(auth,email,password);
       if (result.user.uid !== ALLOWED_UID) throw Error('Ce compte ne dispose pas des droits requis.');

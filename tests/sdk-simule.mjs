@@ -10,6 +10,16 @@ export const doc=(_,kind,id)=>kind+'/'+id;
 export const collection=(_,kind)=>kind;
 export function onAuthStateChanged(_,listener){authListener=listener;return ()=>{authListener=null;};}
 export async function session(uid){auth.currentUser=uid?{uid}:null;await authListener(auth.currentUser);}
+export class GoogleAuthProvider {
+  setCustomParameters(parameters) { this.parameters=parameters; }
+}
+export let popupUid='autre-compte';
+export function selectGoogleAccount(uid){popupUid=uid;}
+export async function signInWithPopup(auth,provider){
+  if (!(provider instanceof GoogleAuthProvider) || provider.parameters.prompt!=='select_account') throw Error('Fournisseur Google attendu');
+  await session(popupUid);
+  return {user:{uid:popupUid}};
+}
 export const signOut=()=>session(null);
 export const signInWithEmailAndPassword=()=>{throw Error('Utiliser session pour ce test.');};
 function snapshot(key){return {id:key.split('/')[1],exists:()=>docs.has(key),data:()=>structuredClone(docs.get(key))};}

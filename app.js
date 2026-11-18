@@ -211,27 +211,48 @@ async function configureFirebase() {
   });
 }
 async function firebaseDialog(){
-  openDialog('Connexion Firebase',`<p>Les recettes et semaines existantes servent de point de départ. Les changements de cet essai sont synchronisés dans des documents réservés au test.</p>
-    <form id="loginForm">
-    <label>Adresse e-mail<input name="email" type="email" autocomplete="username" required></label>
-    <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
-    <button class="primary" disabled>Connexion au service…</button></form>`);
+  openDialog('Connexion au planning', `<p>Choisis le compte Google associé à ton planning.</p>
+    <div id="loginForm" class="fields">
+      <button id="googleLogin" type="button" class="primary" disabled>Continuer avec Google</button>
+      <details><summary>Autre moyen de connexion</summary>
+        <form id="passwordForm">
+          <label>Adresse e-mail<input name="email" type="email" autocomplete="username" required></label>
+          <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
+          <button type="submit" disabled>Se connecter par e-mail</button>
+        </form>
+      </details>
+    </div>`);
   await configureFirebase();
-  const loginForm=$('loginForm');
-  if(!loginForm || !dialog.open) return;
-  const submit=loginForm.querySelector('button');
-  submit.textContent='Se connecter';submit.disabled=false;
-  loginForm.onsubmit=guard(async e=>{
-    e.preventDefault();const form=e.currentTarget, f=new FormData(form), btn=form.querySelector('button');btn.disabled=true;
-    try{
-      await remote.login(f.get('email').trim(),f.get('password'));
-      if(mode!=='firebase'){mode='loading';render();}
-      if(dialog.open && $('loginForm'))dialog.close();
-    } catch(error){
-      if(mode==='loading')startLocal();
-      if(error.code?.startsWith('auth/')) throw Error(`Connexion Firebase refusée (${error.code}).`);
-      throw error;
-    } finally {btn.disabled=false;}
+  const panel = $('loginForm');
+  if (!panel || !dialog.open) return;
+  const buttons = panel.querySelectorAll('button');
+  const disable = value => buttons.forEach(button => { button.disabled = value; });
+  disable(false);
+  async function signIn(action) {
+    disable(true);
+    $('dialogError').textContent = '';
+    try {
+      await action();
+      if (mode !== 'firebase') { mode = 'loading'; render(); }
+      if (dialog.open && $('loginForm') === panel) dialog.close();
+    } catch (error) {
+      if (mode === 'loading') startLocal();
+      const messages = {
+        'auth/unauthorized-domain': `Autorise le domaine ${location.hostname} dans Firebase Authentication, sous Paramètres puis Domaines autorisés.`,
+        'auth/operation-not-allowed': 'Active la méthode de connexion choisie dans Firebase Authentication.',
+        'auth/popup-closed-by-user': 'La fenêtre Google a été fermée. Tu peux réessayer.',
+        'auth/popup-blocked': 'Autorise les fenêtres pop-up pour ce site, puis clique de nouveau sur « Continuer avec Google ».',
+        'auth/account-exists-with-different-credential': 'Cette adresse utilise déjà un autre moyen de connexion dans Firebase.',
+        'auth/invalid-credential': 'Adresse e-mail ou mot de passe incorrect.'
+      };
+      throw Error(messages[error.code] || error.message);
+    } finally { disable(false); }
+  }
+  $('googleLogin').onclick = guard(() => signIn(() => remote.loginWithGoogle()));
+  $('passwordForm').onsubmit = guard(event => {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    return signIn(() => remote.login(fields.get('email').trim(),fields.get('password')));
   });
 }
 
