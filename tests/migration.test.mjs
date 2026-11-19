@@ -57,6 +57,11 @@ test('les transactions Firestore simulées isolent les données et refusent une 
     assert.deepEqual(state.weeks[monday].Jeudi.dinner,['original']);
     await assert.rejects(()=>db.save(changes),/autre appareil/);
     assert.equal(sdk.writes.length,2);
+    const personnalise=structuredClone(state);
+    personnalise.settings.sms={intro:'Bonjour !',fin:''};
+    await db.save(diff(state,personnalise));
+    assert.deepEqual(state.settings.sms,personnalise.settings.sms);
+    assert.deepEqual(sdk.docs.get('weekPlans/essai-sites-v1-settings-sms').value,personnalise.settings.sms);
     await db.logout();
     await assert.rejects(()=>db.save(changes),/autorisé/);
     db.dispose();
@@ -89,4 +94,18 @@ test('les petits-déjeuners historiques restent sauvegardés et sont exclus des 
   assert.deepEqual(readBackup(backup(s)).weeks[monday].Lundi.breakfast,['tartines']);
   assert.equal(shopping(s,monday,2).items.some(i=>i.name==='Pain'),false);
   assert.equal(dinnerMessage(s,monday),'');
+});
+
+test('le modèle du SMS accepte deux textes personnels, des champs vides et les anciennes sauvegardes',async()=>{
+  const {dinnerMessage}=await import('../modele.mjs');
+  const s=sampleState(monday);
+  const ligne='Lundi 16/11 : Nouilles au brocoli et aux crevettes';
+  const ancien=backup(s);
+  delete ancien.settings;
+  assert.deepEqual(readBackup(ancien).settings,{});
+  s.settings.sms={intro:'Ce soir\nà la maison',fin:'À table !'};
+  assert.equal(dinnerMessage(s,monday),'Ce soir\nà la maison\n\n'+ligne+'\n\nÀ table !');
+  assert.deepEqual(readBackup(backup(s)).settings,s.settings);
+  assert.equal(dinnerMessage(s,monday,'',{intro:'',fin:''}),ligne);
+  assert.equal(dinnerMessage(s,monday,'2026-11-19'),'');
 });

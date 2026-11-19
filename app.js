@@ -1,4 +1,4 @@
-import { DAYS,SLOTS,EQUIPMENT,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
+import { DAYS,SLOTS,EQUIPMENT,defaultSms,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
 import {guide} from './guide.mjs';
 
 const $ = id => document.getElementById(id);
@@ -104,7 +104,15 @@ function drawGuide(){ $('guide').innerHTML=guideItems().map(([name,temp,time,not
   <span class="guide-value">${temp} °C · ${time} min</span><p>${esc(note)}</p></article>`).join('')||empty('Aucun aliment trouvé.'); }
 function refreshSms() {
   const from = $('smsRange').value === 'remaining' ? formatDateToLocalIso(new Date()) : '';
-  const text = mode === 'loading' ? '' : dinnerMessage(state,monday,from);
+  const stored = state.settings.sms ?? defaultSms;
+  const intro = $('smsIntro'), fin = $('smsFin');
+  if (intro.value === intro.defaultValue && fin.value === fin.defaultValue) {
+    intro.defaultValue = intro.value = stored.intro;
+    fin.defaultValue = fin.value = stored.fin;
+  }
+  const draft = {intro:intro.value,fin:fin.value};
+  $('smsSave').disabled = mode === 'loading' || (draft.intro === stored.intro && draft.fin === stored.fin);
+  const text = mode === 'loading' ? '' : dinnerMessage(state,monday,from,draft);
   if ($('smsText').value !== text) {
     $('smsText').value = text;
     $('smsFeedback').textContent = '';
@@ -122,10 +130,33 @@ function openSms() {
   openDialog('Exporter les dîners par SMS',`<div class="fields sms-export">
     <strong>${esc(weekLabel())}</strong>
     <label>Période <select id="smsRange"><option value="week">Toute la semaine</option><option value="remaining">À partir d’aujourd’hui</option></select></label>
+    <details><summary>Personnaliser le texte du SMS</summary>
+      <div class="fields sms-model">
+        <label>Avant les dîners<textarea id="smsIntro" rows="2"></textarea></label>
+        <label>Après les dîners<textarea id="smsFin" rows="2"></textarea></label>
+        <button type="button" id="smsSave">Enregistrer pour les prochains SMS</button>
+      </div>
+    </details>
     <textarea id="smsText" aria-label="Texte du SMS" rows="8" readonly></textarea>
     <p id="smsEmpty" role="status"></p>
     <div class="actions"><button type="button" id="smsCopy">Copier le texte</button><a id="smsOpen" class="primary">Ouvrir les SMS</a></div>
     <span id="smsFeedback" role="status"></span></div>`);
+  const intro = $('smsIntro'), fin = $('smsFin');
+  intro.oninput = fin.oninput = () => { $('smsFeedback').textContent=''; refreshSms(); };
+  $('smsSave').onclick = guard(async () => {
+    const draft = {intro:intro.value,fin:fin.value};
+    await change(next=>{
+      const stored = next.settings.sms ?? defaultSms;
+      if (stored.intro !== intro.defaultValue || stored.fin !== fin.defaultValue)
+        throw Error('Le modèle a changé sur un autre appareil. Rouvre l’export pour utiliser la dernière version.');
+      next.settings.sms = draft;
+    });
+    if (!dialog.open || $('smsIntro') !== intro) return;
+    intro.defaultValue = draft.intro;
+    fin.defaultValue = draft.fin;
+    refreshSms();
+    $('smsFeedback').textContent='Texte enregistré pour les prochains SMS.';
+  });
   $('smsRange').onchange = refreshSms;
   $('smsOpen').onclick = event => { if (!refreshSms()) event.preventDefault(); };
   $('smsCopy').onclick = async () => {
@@ -357,7 +388,7 @@ $('importFile').onchange=guard(async e=>{
   const incoming=readBackup(JSON.parse(await file.text()));
   const count=Object.keys(incoming.meals).length, weeks=Object.keys(incoming.weeks).length;
   if(!confirm(`Importer ${count} recette(s) et ${weeks} semaine(s) dans cet essai ? Les fiches et semaines de même identifiant seront remplacées.`))return;
-  await change(next=>{Object.assign(next.meals,incoming.meals);Object.assign(next.weeks,incoming.weeks);});
+  await change(next=>{Object.assign(next.meals,incoming.meals);Object.assign(next.weeks,incoming.weeks);Object.assign(next.settings,incoming.settings);});
   message('Sauvegarde importée.');
 });
 document.addEventListener('dragstart',e=>{

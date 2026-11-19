@@ -65,7 +65,7 @@ const storedSlots = ['breakfast', ...Object.keys(SLOTS)];
 export const EQUIPMENT = ['Thermomix TM5', 'Air Fryer', 'Four', 'Faitout'];
 export const fold = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 export const amount = n => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 3 }).format(n);
-export const emptyState = () => ({ meals: {}, weeks: {} });
+export const emptyState = () => ({ meals: {}, weeks: {}, settings: {} });
 
 export function weekDays(source = {}) {
   return Object.fromEntries(DAYS.map(day => {
@@ -77,7 +77,13 @@ export function weekDays(source = {}) {
   }));
 }
 
-export function dinnerMessage(state, monday, fromDate = '') {
+export const defaultSms = Object.freeze({
+  intro:'Le chef Tony, Minou et Pelucho les commis, vous proposent à diner :',
+  fin:'Bon appetit !'
+});
+export const validSms = value => typeof value?.intro === 'string' && typeof value?.fin === 'string';
+
+export function dinnerMessage(state, monday, fromDate = '', model = state.settings?.sms ?? defaultSms) {
   const days = weekDays(state.weeks[monday]);
   const dates = getWeekDates(monday);
   const lines = [];
@@ -87,11 +93,7 @@ export function dinnerMessage(state, monday, fromDate = '') {
     if (names.length) lines.push(day + ' ' + dates[i].slice(8) + '/' + dates[i].slice(5,7) + ' : ' + names.join(' + '));
   }
   if (!lines.length) return '';
-  return [
-    'Le chef Tony, Minou et Pelucho les commis, vous proposent à diner :',
-    lines.join('\n'),
-    'Bon appetit !'
-  ].join('\n\n');
+  return [model.intro.trim(), lines.join('\n'), model.fin.trim()].filter(Boolean).join('\n\n');
 }
 
 export function recipe(raw) {
@@ -130,7 +132,7 @@ export function sampleState(monday) {
   const days = weekDays();
   days.Lundi.dinner.push('nouilles');
   days.Mercredi.lunch.push('tartines');
-  return { meals, weeks:{[monday]:days} };
+  return { meals, weeks:{[monday]:days}, settings:{} };
 }
 
 const plain = x => x !== null && typeof x === 'object' && !Array.isArray(x);
@@ -141,6 +143,10 @@ export function readBackup(raw) {
   const fail = () => { throw Error('Sauvegarde incompatible ou données invalides.'); };
   if (raw?.format !== 'tableau-repas' || raw.version !== 1 || !plain(raw.meals) || !plain(raw.weeks)) fail();
   const state = emptyState();
+  if (raw.settings?.sms !== undefined) {
+    if (!validSms(raw.settings.sms)) fail();
+    state.settings.sms = {intro:raw.settings.sms.intro,fin:raw.settings.sms.fin};
+  }
   for (const [id,m] of Object.entries(raw.meals)) {
     if (!safeId(id) || !plain(m) || !textField(m.name,160) || !m.name.trim() || !textField(m.note,5000) ||
       ![1,2,4].includes(m.portions) || !Array.isArray(m.equipment) || !m.equipment.every(x=>EQUIPMENT.includes(x)) ||
@@ -163,9 +169,9 @@ export function readBackup(raw) {
 export function backup(state) { return {format:'tableau-repas',version:1,...state}; }
 export function diff(before, after) {
   const changes = [];
-  for (const kind of ['meals','weeks']) {
-    for (const id of new Set([...Object.keys(before[kind]), ...Object.keys(after[kind])])) {
-      const old = before[kind][id] ?? null, value = after[kind][id] ?? null;
+  for (const kind of ['meals','weeks','settings']) {
+    for (const id of new Set([...Object.keys(before[kind] || {}), ...Object.keys(after[kind] || {})])) {
+      const old = before[kind]?.[id] ?? null, value = after[kind]?.[id] ?? null;
       if (JSON.stringify(old) !== JSON.stringify(value)) changes.push({kind,id,old,value});
     }
   }

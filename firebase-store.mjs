@@ -8,7 +8,7 @@ import {
   signOut,
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import { collection, doc, getFirestore, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
-import { emptyState, recipe, weekDays, normalizeMondayDate, shiftMonday, getMondayIsoForToday } from './modele.mjs';
+import { validSms, emptyState, recipe, weekDays, normalizeMondayDate, shiftMonday, getMondayIsoForToday } from './modele.mjs';
 const ALLOWED_UID = 'ENgOZhuh0ca3tqeb0IbII2CCVzX2';
 const PREFIX = 'essai-sites-v1-';
 const overlayId = (kind,id) => PREFIX + kind + '-' + id;
@@ -67,6 +67,10 @@ export function connect(callbacks) {
       for (const snap of weekDocs) {
         if (!snap.id.startsWith(PREFIX)) continue;
         const {kind,id,value} = snap.data();
+        if (kind === 'settings' && id === 'sms' && snap.id === overlayId(kind,id)) {
+          if (validSms(value)) state.settings.sms = {intro:value.intro,fin:value.fin};
+          continue;
+        }
         if (!['weeks','meals'].includes(kind) || snap.id !== overlayId(kind,id) || id in Object.prototype) continue;
         if (value == null) delete state[kind][id];
         else state[kind][id] = kind === 'meals' ? recipe(value) : weekDays(value);
