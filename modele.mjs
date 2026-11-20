@@ -36,6 +36,18 @@ export function getWeekDates(mondayIsoDate) {
   });
 }
 
+// La période visible va de la veille à la même journée de la semaine suivante.
+export function planningDates(reference, weekOffset = 0) {
+  const cursor = new Date(reference + 'T12:00:00');
+  cursor.setDate(cursor.getDate() + 7 * weekOffset - 1);
+  return Array.from({length:9}, () => {
+    const date = formatDateToLocalIso(cursor);
+    const day = DAYS[(cursor.getDay() + 6) % 7];
+    cursor.setDate(cursor.getDate() + 1);
+    return {date,day,week:normalizeMondayDate(date)};
+  });
+}
+
 export function formatDateFr(isoDate) {
   const dateObj = new Date(`${sanitizeMondayDate(isoDate)}T12:00:00`);
   return dateObj.toLocaleDateString('fr-FR');

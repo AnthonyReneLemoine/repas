@@ -1,4 +1,4 @@
-import { DAYS,SLOTS,EQUIPMENT,defaultSms,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
+import { DAYS,SLOTS,EQUIPMENT,defaultSms,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,planningDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
 import {guide} from './guide.mjs';
 
 const $ = id => document.getElementById(id);
@@ -8,6 +8,7 @@ const portions = n=>[1,2,4].map(v=>opt(v,`${v} pers.`,n===v)).join('');
 const empty = message=>`<p class="muted">${esc(message)}</p>`;
 const uiButton = (action,label,id='',classes='')=>`<button type="button" data-act="${action}" data-id="${esc(id)}" class="${classes}">${esc(label)}</button>`;
 const localKey = 'tableau-repas.essai.v1';
+let today = formatDateToLocalIso(new Date()), weekOffset = 0;
 let monday = getMondayIsoForToday(), page='planning', mode='local', remote=null, busy=false;
 let state=sampleState(monday), drag=null;
 const dialog=$('dialog');
@@ -73,14 +74,19 @@ function sortedMeals(includeArchived=false) {
   return Object.entries(state.meals).filter(([,m])=>includeArchived||!m.archived)
     .sort((a,b)=>a[1].sortOrder-b[1].sortOrder||a[1].name.localeCompare(b[1].name,'fr'));
 }
+function visibleDates() { return planningDates(today,weekOffset); }
+function periodLabel(dates) {
+  return `Du ${formatWeekBoundary(dates[0].date)} au ${formatWeekBoundary(dates.at(-1).date,true)}`;
+}
 function drawBoard(){
-  const days=weekDays(state.weeks[monday]), dates=getWeekDates(monday);
+  const dates=visibleDates();
+  $('planningRange').textContent=periodLabel(dates);
   $('board').innerHTML=`<div class="board-row board-head"><div>Jour</div>${Object.values(SLOTS).map(s=>`<div>${s}</div>`).join('')}</div>`+
-    DAYS.map((day,i)=>`<div class="board-row"><div class="day"><strong>${day}</strong><small>${formatWeekBoundary(dates[i])}</small></div>`+
-    Object.entries(SLOTS).map(([slot,label])=>`<div class="slot" data-day="${day}" data-slot="${slot}"><span class="slot-name">${label}</span>`+
-      days[day][slot].filter(id=>state.meals[id]).map(id=>`<div draggable="true" class="planned" data-id="${esc(id)}">
+    dates.map(({date,day,week})=>`<div class="board-row"><div class="day"${date===today?' aria-current="date"':''}><strong>${day}</strong><small>${formatWeekBoundary(date)}${date===today?" · Aujourd’hui":""}</small></div>`+
+    Object.entries(SLOTS).map(([slot,label])=>`<div class="slot" data-date="${date}" data-week="${week}" data-day="${day}" data-slot="${slot}"><span class="slot-name">${label}</span>`+
+      weekDays(state.weeks[week])[day][slot].filter(id=>state.meals[id]).map(id=>`<div draggable="true" class="planned" data-id="${esc(id)}">
         ${uiButton('detail',state.meals[id].name,id)}<button data-act="remove" data-id="${esc(id)}" aria-label="Retirer ${esc(state.meals[id].name)}">×</button></div>`).join('')+
-      `<button class="add" data-act="pick" aria-label="Ajouter un repas, ${day}, ${label}">+ Ajouter</button></div>`).join('')+'</div>').join('');
+      `<button class="add" data-act="pick" aria-label="Ajouter un repas, ${day} ${formatWeekBoundary(date)}, ${label}">+ Ajouter</button></div>`).join('')+'</div>').join('');
 }
 function drawRecipes(){
   const search=fold($('search').value), filter=$('filter').value;
@@ -240,13 +246,12 @@ function changeSlot(next,key,day,slot,fn){
 async function assign(id,key,day,slot,from=null) {
   await change(next=>{
     if(!next.meals[id]) throw Error('Repas introuvable.');
-    if(from) changeSlot(next,key,from.day,from.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);});
+    if(from) changeSlot(next,from.week,from.day,from.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);});
     changeSlot(next,key,day,slot,ids=>{if(!ids.includes(id)) ids.push(id);});
   });
 }
-function pick(day,slot){
-  const week=monday;
-  openDialog(`${day} · ${SLOTS[slot]}`,`<div class="meal-picker"><input id="pickSearch" type="search" placeholder="Rechercher un repas…" aria-label="Rechercher un repas"><div class="meal-picker" id="pickList"></div></div>`);
+function pick({week,day,date,slot}){
+  openDialog(`${day} ${formatWeekBoundary(date)} · ${SLOTS[slot]}`,`<div class="meal-picker"><input id="pickSearch" type="search" placeholder="Rechercher un repas…" aria-label="Rechercher un repas"><div class="meal-picker" id="pickList"></div></div>`);
   function update(){
     const rows=sortedMeals().filter(([,m])=>fold(m.name).includes(fold($('pickSearch').value)));
     $('pickList').innerHTML=rows.map(([id,m])=>`<button data-pick="${esc(id)}">${esc(m.name)}</button>`).join('')||empty('Aucun repas disponible.');
@@ -255,13 +260,14 @@ function pick(day,slot){
   $('pickList').onclick=guard(async e=>{const btn=e.target.closest('[data-pick]');if(!btn)return;await assign(btn.dataset.pick,week,day,slot);dialog.close();message('Repas planifié.');});
 }
 function plan(id){
-  const week=monday;
-  openDialog('Planifier le repas',`<form id="planForm"><strong>${esc(state.meals[id].name)}</strong><span>${esc(weekLabel())}</span>
-    <label>Jour<select name="day">${DAYS.map(d=>opt(d,d)).join('')}</select></label>
+  const dates=visibleDates();
+  openDialog('Planifier le repas',`<form id="planForm"><strong>${esc(state.meals[id].name)}</strong><span>${esc(periodLabel(dates))}</span>
+    <label>Jour<select name="date">${dates.map(({date,day})=>opt(date,day+' '+formatWeekBoundary(date),date===today)).join('')}</select></label>
     <label>Repas<select name="slot">${Object.entries(SLOTS).map(([k,v])=>opt(k,v,k==='dinner')).join('')}</select></label>
     <button class="primary">Ajouter au planning</button></form>`);
   $('planForm').onsubmit=guard(async e=>{e.preventDefault();const f=new FormData(e.currentTarget);
-    await assign(id,week,f.get('day'),f.get('slot'));dialog.close();message('Repas planifié.');});
+    const {week,day}=dates.find(row=>row.date===f.get('date'));
+    await assign(id,week,day,f.get('slot'));dialog.close();message('Repas planifié.');});
 }
 function guard(fn){return async event=>{try{await fn(event);}catch(error){showError(error);}};}
 
@@ -332,15 +338,18 @@ async function firebaseDialog(){
 document.addEventListener('click',guard(async e=>{
   const button=e.target.closest('button');if(!button)return;
   if(button.dataset.page){page=button.dataset.page;message('');render();return;}
-  if(button.hasAttribute('data-today')||button.dataset.shift){monday=button.dataset.shift?shiftMonday(monday,Number(button.dataset.shift)):getMondayIsoForToday();render();return;}
+  if(button.hasAttribute('data-today')||button.dataset.shift){
+    weekOffset=button.dataset.shift ? weekOffset+Number(button.dataset.shift) : 0;
+    updateCalendar();render();return;
+  }
   const {act,id}=button.dataset, slot=button.closest('.slot');
   switch(act){
     case 'detail': detail(id);return;
     case 'edit': editRecipe(id);return;
     case 'plan': plan(id);return;
-    case 'pick': pick(slot.dataset.day,slot.dataset.slot);return;
+    case 'pick': pick(slot.dataset);return;
     case 'remove':
-      await change(next=>changeSlot(next,monday,slot.dataset.day,slot.dataset.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);}));
+      await change(next=>changeSlot(next,slot.dataset.week,slot.dataset.day,slot.dataset.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);}));
       message('Repas retiré du créneau.');return;
     case 'dropIngredient':button.closest('.ingredient').remove();return;
     case 'archive':
@@ -354,14 +363,17 @@ document.addEventListener('click',guard(async e=>{
   switch(button.id){
     case 'newMeal':editRecipe();break;
     case 'close':dialog.close();break;
-    case 'reset':
-      if(confirm(`Vider le planning d’essai pour la semaine du ${formatWeekBoundary(monday,true)} ?`))
+    case 'reset': {
+      const dates=visibleDates();
+      if(confirm(`Vider les déjeuners et dîners de cette période ? ${periodLabel(dates)}.`))
         await change(next=>{
-          const days=weekDays(next.weeks[monday]);
-          for(const day of DAYS) for(const slot of Object.keys(SLOTS)) days[day][slot]=[];
-          next.weeks[monday]=days;
+          for(const {week,day} of dates) {
+            if(!next.weeks[week]) continue;
+            for(const slot of Object.keys(SLOTS)) next.weeks[week][day][slot]=[];
+          }
         });
       break;
+    }
     case 'account':
       if(mode==='local')await firebaseDialog();
       else {await remote.logout();startLocal();}
@@ -375,9 +387,9 @@ document.addEventListener('click',guard(async e=>{
     case 'printGuide':printSheet('Guide Air Fryer',`<p>Moulinex Easy Fry Mega 7,5 L</p><ul>${guideItems().map(([n,t,m,k])=>`<li><strong>${esc(n)}</strong> · ${t} °C · ${m} min. ${esc(k)}</li>`).join('')}</ul>`);break;
     case 'smsWeek':openSms();break;
     case 'printWeek':{
-      const days=weekDays(state.weeks[monday]);
-      printSheet('Planning des repas',`<p>${weekLabel()}</p>`+DAYS.map(day=>`<div class="print-group"><h2>${day}</h2>`+
-        Object.entries(SLOTS).map(([k,label])=>`<div><strong>${label}</strong> · ${days[day][k].map(id=>state.meals[id]?.name).filter(Boolean).map(esc).join(', ')||'—'}</div>`).join('')+'</div>').join(''));break;
+      const dates=visibleDates();
+      printSheet('Planning des repas',`<p>${periodLabel(dates)}</p>`+dates.map(({date,day,week})=>`<div class="print-group"><h2>${day} ${formatWeekBoundary(date)}</h2>`+
+        Object.entries(SLOTS).map(([k,label])=>`<div><strong>${label}</strong> · ${weekDays(state.weeks[week])[day][k].map(id=>state.meals[id]?.name).filter(Boolean).map(esc).join(', ')||'—'}</div>`).join('')+'</div>').join(''));break;
     }
     case 'export':download(`repas-${monday}.json`,JSON.stringify(backup(state),null,2),'application/json');break;
     case 'importBtn':$('importFile').click();break;
@@ -393,7 +405,7 @@ $('importFile').onchange=guard(async e=>{
 });
 document.addEventListener('dragstart',e=>{
   const item=e.target.closest('[draggable=true]');if(!item)return;
-  const slot=item.closest('.slot');drag={id:item.dataset.id,week:monday,from:slot?{...slot.dataset}:null};
+  const slot=item.closest('.slot');drag={id:item.dataset.id,from:slot?{...slot.dataset}:null};
   e.dataTransfer.setData('text/plain',item.dataset.id);e.dataTransfer.effectAllowed='move';
 });
 document.addEventListener('dragover',e=>{
@@ -407,12 +419,12 @@ document.addEventListener('dragleave',e=>e.target.closest('.over')?.classList.re
 document.addEventListener('dragend',()=>{drag=null;document.querySelectorAll('.over').forEach(n=>n.classList.remove('over'));});
 document.addEventListener('drop',guard(async e=>{
   if(!drag)return;e.preventDefault();
-  const {id,from,week}=drag;drag=null;
+  const {id,from}=drag;drag=null;
   document.querySelectorAll('.over').forEach(n=>n.classList.remove('over'));
   const target=e.target.closest('.slot');
-  if(target){await assign(id,week,target.dataset.day,target.dataset.slot,from);return;}
+  if(target){await assign(id,target.dataset.week,target.dataset.day,target.dataset.slot,from);return;}
   if(!e.target.closest('#recipes'))return;
-  if(from){await change(next=>changeSlot(next,week,from.day,from.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);}));return;}
+  if(from){await change(next=>changeSlot(next,from.week,from.day,from.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);}));return;}
   const before=e.target.closest('.card')?.dataset.id;if(!before||id===before)return;
   await change(next=>{
     const ids=sortedMeals(true).map(([k])=>k).filter(k=>k!==id);
@@ -423,7 +435,24 @@ $('search').oninput=drawRecipes;$('filter').onchange=drawRecipes;$('archived').o
 $('guideSearch').oninput=drawGuide;$('shoppingPortions').onchange=drawShopping;
 $('filter').innerHTML=opt('','Tous les appareils')+EQUIPMENT.map(e=>opt(e,e)).join('');
 $('shoppingPortions').innerHTML=portions(2);
-$('dateLabel').textContent=new Intl.DateTimeFormat('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date());
+function updateCalendar() {
+  const now=new Date();
+  today=formatDateToLocalIso(now);
+  monday=shiftMonday(today,weekOffset);
+  $('dateLabel').textContent=new Intl.DateTimeFormat('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(now);
+}
+function refreshDate() {
+  if(today!==formatDateToLocalIso(new Date())) { updateCalendar();render(); }
+}
+function scheduleMidnight() {
+  const midnight=new Date();
+  midnight.setHours(24,0,0,0);
+  setTimeout(()=>{refreshDate();scheduleMidnight();},midnight.getTime()-Date.now()+100);
+}
+updateCalendar();
+scheduleMidnight();
+window.addEventListener('focus',refreshDate);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden) refreshDate();});
 window.addEventListener('storage',guard(e=>{if(e.key===localKey && mode==='local'){state=localState();render();}}));
 try{startLocal();}catch(error){render();showError(error);}
 

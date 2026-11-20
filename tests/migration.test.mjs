@@ -109,3 +109,16 @@ test('le modèle du SMS accepte deux textes personnels, des champs vides et les 
   assert.equal(dinnerMessage(s,monday,'',{intro:'',fin:''}),ligne);
   assert.equal(dinnerMessage(s,monday,'2026-11-19'),'');
 });
+
+test('le planning glissant relie chaque date à sa semaine de stockage',async()=>{
+  const {planningDates}=await import('../modele.mjs');
+  const rows=planningDates('2026-11-18');
+  assert.equal(rows.length,9);
+  assert.deepEqual(rows[0],{date:'2026-11-17',day:'Mardi',week:'2026-11-16'});
+  assert.deepEqual(rows[8],{date:'2026-11-25',day:'Mercredi',week:'2026-11-23'});
+  assert.notEqual(rows[1].week,rows[8].week);
+  assert.deepEqual(planningDates('2026-11-18',1)[0],rows[7]);
+  const newYear=planningDates('2027-01-04');
+  assert.deepEqual(newYear[0],{date:'2027-01-03',day:'Dimanche',week:'2026-12-28'});
+  assert.deepEqual(newYear[8],{date:'2027-01-11',day:'Lundi',week:'2027-01-11'});
+});
