@@ -1,4 +1,4 @@
-import { catalogue, catalogueMarker, catalogueMarkers, ingredientKey } from './catalogue.mjs';
+import { catalogueMarker, catalogueMarkers } from './catalogue.mjs';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
   getAuth,
@@ -49,17 +49,14 @@ const firebaseConfig = {
 
 async function initializeCatalog(db, state) {
   const seeded = structuredClone(state);
-  populateIngredients(seeded);
-  const entries = Object.entries(seeded.meals).filter(([id]) => !state.meals[id]);
+  const entries = populateIngredients(seeded);
   const markers=catalogueMarkers.map(id=>doc(db,'weekPlans',overlayId('settings',id)));
   await runTransaction(db, async tx => {
     const installed=await Promise.all(markers.map(async ref=>(await tx.get(ref)).data()?.value === true));
     if (installed.at(-1)) return;
-    const missing=entries.filter(([,value])=>{
-      const version=catalogue.get(ingredientKey(value.name)).version ?? 1;
-      return !installed[version-1];
-    });
-    const records = await Promise.all(missing.map(async ([id,value]) => {
+    const missing=entries.filter(({version})=>!installed[version-1]);
+    const records = await Promise.all(missing.map(async ({id}) => {
+      const value=seeded.meals[id];
       const ref = doc(db,'weekPlans',overlayId('meals',id));
       return {ref,exists:(await tx.get(ref)).exists(),id,value};
     }));

@@ -79,7 +79,7 @@ const selectionParFamille = {
     'Sirop de menthe', 'Café', 'Café décaféiné', 'Thé noir', 'Thé vert', 'Infusion de verveine', 'Chocolat chaud'
   ]
 };
-export const catalogueMarkers = ['catalogueV1','catalogueV2','catalogueV3','catalogueV4'];
+export const catalogueMarkers = ['catalogueV1','catalogueV2','catalogueV3','catalogueV4','catalogueV5'];
 export const catalogueMarker = catalogueMarkers.at(-1);
 export const familles = [];
 
@@ -185,3 +185,15 @@ addFamily('Épicerie et conserves',['Moutarde de Dijon','Vinaigre de riz','Huile
   'Tahini','Eau de fleur d’oranger'],4);
 addFamily('Noix et graines',['Amandes','Cacahuètes','Noix','Noix de pécan','Noisettes',
   'Pistaches','Pignons de pin','Graines de sésame','Graines de courge'],4);
+
+
+addFamily('Pâtes italiennes',[
+  'Spaghettis','Spaghettoni','Spaghettini','Capellini','Bucatini','Linguine','Trenette','Tonnarelli',
+  'Tagliatelles','Fettuccine','Pappardelle','Mafaldine','Feuilles de lasagnes','Cannelloni',
+  'Pennes','Rigatoni','Mezze maniche','Macaronis','Ziti','Paccheri','Calamarata','Fusilli',
+  'Farfalle','Gemelli','Casarecce','Cavatappi','Conchiglie','Conchiglioni','Orecchiette','Trofie',
+  'Ditalini','Stelline','Risoni','Ravioli','Tortellini','Tortelloni','Agnolotti','Cappelletti'
+],5);
+addFamily('Œufs et produits frais',['Parmesan','Pecorino romano','Ricotta salata'],5);
+addFamily('Viandes et charcuteries',['Guanciale'],5);
+addFamily('Herbes et épices',['Piment séché'],5);

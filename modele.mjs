@@ -1,3 +1,4 @@
+import { saucesItaliennes } from './sauces-italiennes.mjs';
 import { catalogue, catalogueMarker, catalogueMarkers, ingredientKey } from './catalogue.mjs';
 
 export function getMondayIsoForToday() {
@@ -118,7 +119,8 @@ export function recipe(raw) {
 
 // Le marqueur évite de recréer les fiches que l’utilisateur a supprimées ou renommées.
 export function populateIngredients(state) {
-  if (state.settings[catalogueMarker] === true) return;
+  const added=[];
+  if (state.settings[catalogueMarker] === true) return added;
   const existing = new Set(Object.values(state.meals)
     .filter(meal => meal.kind === 'ingredient').map(meal => ingredientKey(meal.name)));
   for (const [key,{name,version=1}] of catalogue) {
@@ -126,9 +128,21 @@ export function populateIngredients(state) {
     const id = 'ingredient-classique-' + key;
     if (!existing.has(key) && !state.meals[id]) {
       state.meals[id] = recipe({kind:'ingredient',name,ingredients:[{name,qty:null,unit:''}]});
+      added.push({id,version});
+    }
+  }
+  if (!state.settings.catalogueV5) {
+    const existingRecipes=new Set(Object.values(state.meals).filter(m=>m.kind!=='ingredient').map(m=>ingredientKey(m.name)));
+    for (const sauce of saucesItaliennes) {
+      const key=ingredientKey(sauce.name), id='recette-italienne-'+key;
+      if (!existingRecipes.has(key) && !state.meals[id]) {
+        state.meals[id]=recipe(structuredClone(sauce));
+        added.push({id,version:5});
+      }
     }
   }
   for (const marker of catalogueMarkers) state.settings[marker] = true;
+  return added;
 }
 
 export function shopping(state, monday, portions) {

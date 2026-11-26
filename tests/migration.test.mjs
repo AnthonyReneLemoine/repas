@@ -210,3 +210,33 @@ test('les sauces, poissons, pains et viennoiseries complètent un catalogue V2 d
   populateIngredients(restored);
   assert.deepEqual(restored,s);
 });
+
+test('les pâtes et les recettes de sauces complètent un catalogue V4 sans écraser les fiches de même nom',async()=>{
+  const {populateIngredients}=await import('../modele.mjs');
+  const {catalogue,ingredientKey}=await import('../catalogue.mjs');
+  const {saucesItaliennes}=await import('../sauces-italiennes.mjs');
+  const s=sampleState(monday);
+  s.settings={catalogueV1:true,catalogueV2:true,catalogueV3:true,catalogueV4:true};
+  s.meals.pesto=recipe({name:'Pesto au basilic',note:'Ma recette'});
+  s.meals.sauce=recipe({kind:'ingredient',name:'Sauce arrabbiata',ingredients:[{name:'Sauce arrabbiata',qty:null,unit:''}]});
+  const added=populateIngredients(s);
+  assert.ok(added.every(entry=>entry.version===5));
+  assert.equal(s.meals['ingredient-classique-spaghettis'],undefined);
+  assert.equal(catalogue.get('spaghettis').famille,'Pâtes italiennes');
+  assert.equal(s.meals['ingredient-classique-farfalle'].kind,'ingredient');
+  assert.equal(s.meals['recette-italienne-pesto-au-basilic'],undefined);
+  assert.equal(s.meals.pesto.note,'Ma recette');
+  for(const sauce of saucesItaliennes.filter(r=>r.name!==s.meals.pesto.name)){
+    const fiche=s.meals['recette-italienne-'+ingredientKey(sauce.name)];
+    assert.equal(fiche.kind,undefined);
+    assert.equal(fiche.portions,2);
+    assert.ok(fiche.steps.length>=2);
+    assert.ok(fiche.ingredients.every(i=>catalogue.has(ingredientKey(i.name))&&i.qty>0&&i.unit));
+  }
+  s.weeks[monday].Jeudi.dinner=['recette-italienne-sauce-arrabbiata'];
+  assert.ok(shopping(s,monday,2).items.some(i=>i.name==='Piment séché'));
+  delete s.meals['recette-italienne-sauce-carbonara'];
+  const restored=readBackup(backup(s));
+  assert.deepEqual(populateIngredients(restored),[]);
+  assert.deepEqual(restored,s);
+});
