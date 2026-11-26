@@ -56,23 +56,25 @@ function weekLabel(startDate=monday) {
   const dates=getWeekDates(startDate);
   return `Du ${formatWeekBoundary(dates[0])} au ${formatWeekBoundary(dates[6],true)}`;
 }
-const labels={planning:'Planning',recettes:'Recettes',courses:'Liste de courses',guide:'Guide Air Fryer'};
+const labels={planning:'Planning',recettes:'Recettes',ingredients:'Ingrédients',courses:'Liste de courses',guide:'Guide Air Fryer'};
 function render() {
   $('title').textContent=labels[page];
   document.querySelectorAll('[data-page]').forEach(b=>b.setAttribute('aria-current',b.dataset.page===page?'page':'false'));
-  document.querySelectorAll('[data-view]').forEach(s=>s.hidden=s.dataset.view!==page);
+  document.querySelectorAll('[data-view]').forEach(s=>s.hidden=!s.dataset.view.split(' ').includes(page));
   $('mode').textContent=({local:'Essai sur cet appareil',loading:'Connexion en cours…',firebase:'Essai Firebase synchronisé'})[mode];
   $('account').textContent=mode==='local'?'Connecter Firebase':'Quitter Firebase';
   document.querySelectorAll('.weekLabel').forEach(n=>n.textContent=weekLabel());
   if(page==='planning') drawBoard();
   if(dialog.open && $('smsRange')) refreshSms();
-  if(page==='recettes') drawRecipes();
+  if(page==='recettes'||page==='ingredients') drawRecipes();
   if(page==='courses') drawShopping();
   if(page==='guide') drawGuide();
 }
+const byName = new Intl.Collator('fr',{sensitivity:'base',numeric:true});
 function sortedMeals(includeArchived=false) {
+  const alpha=$('mealOrder').value==='alpha';
   return Object.entries(state.meals).filter(([,m])=>includeArchived||!m.archived)
-    .sort((a,b)=>a[1].sortOrder-b[1].sortOrder||a[1].name.localeCompare(b[1].name,'fr'));
+    .sort(([,a],[,b])=>(alpha ? 0 : a.sortOrder-b.sortOrder) || byName.compare(a.name,b.name));
 }
 function visibleDates() { return planningDates(today,weekOffset); }
 function periodLabel(dates) {
@@ -90,14 +92,19 @@ function drawBoard(){
       `<button class="add" data-act="pick" aria-label="Ajouter un repas, ${day} ${formatWeekBoundary(date)}, ${label}">+ Ajouter</button></div>`).join('')+'</div>').join('');
 }
 function drawRecipes(){
-  const search=fold($('search').value), filter=$('filter').value;
-  const list=sortedMeals($('archived').checked).filter(([,m])=>(!filter||m.equipment.includes(filter))&&
+  const ingredientsOnly=page==='ingredients';
+  $('filter').hidden=ingredientsOnly;
+  const searchLabel=ingredientsOnly?'Rechercher un ingrédient':'Rechercher une recette';
+  $('search').placeholder=searchLabel+'…';
+  $('search').setAttribute('aria-label',searchLabel);
+  const search=fold($('search').value), filter=ingredientsOnly?'':$('filter').value;
+  const list=sortedMeals($('archived').checked).filter(([,m])=>(m.kind==='ingredient')===ingredientsOnly && (!filter||m.equipment.includes(filter))&&
     fold([m.name,m.note,...m.ingredients.map(i=>i.name)].join(' ')).includes(search));
   $('recipes').innerHTML=list.map(([id,m])=>`<article class="card" draggable="true" data-id="${esc(id)}">
     ${uiButton('detail',m.name,id,'dish-title')}${m.archived?'<small>Archivée</small>':''}
     <div>${m.equipment.map(e=>`<span class="tag">${esc(e)}</span>`).join(' ')}</div>
-    ${m.note?`<p class="note">${esc(m.note)}</p>`:''}<small>${m.portions} personnes · ${m.ingredients.length} ingrédient${m.ingredients.length>1?'s':''}</small>
-    <div class="actions">${uiButton('edit','Modifier',id)}${!m.archived?uiButton('plan','Planifier',id):''}${uiButton('delete','Supprimer',id,'danger')}</div></article>`).join('')||empty('Aucune recette pour cette sélection.');
+    ${m.note?`<p class="note">${esc(m.note)}</p>`:''}<small>${ingredientsOnly ? (m.ingredients[0]?.qty != null ? esc([amount(m.ingredients[0].qty),m.ingredients[0].unit].filter(Boolean).join(' '))+' pour '+m.portions+' pers.' : 'Quantité libre') : m.portions+' personnes · '+m.ingredients.length+' ingrédient'+(m.ingredients.length>1?'s':'')}</small>
+    <div class="actions">${uiButton('edit','Modifier',id)}${!m.archived?uiButton('plan','Planifier',id):''}${uiButton('delete','Supprimer',id,'danger')}</div></article>`).join('')||empty(ingredientsOnly?'Aucun ingrédient pour cette sélection.':'Aucune recette pour cette sélection.');
 }
 const ingredientText=(i,factor=1)=>i.qty===null?[i.name,i.unit].filter(Boolean).join(' · '):[amount(i.qty*factor),i.unit,'—',i.name].filter(Boolean).join(' ');
 function currentShopping(){return shopping(state,monday,Number($('shoppingPortions').value));}
@@ -192,6 +199,7 @@ function download(name,data,type){
   a.href=url; a.download=name; a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 function detailBody(m,n){
+  if(m.kind==='ingredient') return `<p>${esc(ingredientText(m.ingredients[0],n/m.portions))}</p>`;
   return `<div class="recipe-detail"><p>${esc(m.equipment.join(' · '))}</p>${m.note?`<p class="note">${esc(m.note)}</p>`:''}
     <h3>Ingrédients</h3>${m.ingredients.length?`<ul>${m.ingredients.map(i=>`<li>${esc(ingredientText(i,n/m.portions))}</li>`).join('')}</ul>`:empty('Aucun ingrédient renseigné.')}
     <h3>Préparation</h3>${m.steps.length?`<ol>${m.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol>`:empty('Aucune étape renseignée.')}</div>`;
@@ -209,6 +217,37 @@ function ingredientRow(i={name:'',qty:null,unit:''}){
   <input type="number" step="any" min="0.000001" aria-label="Quantité" placeholder="Qté" value="${esc(i.qty??'')}">
   <input aria-label="Unité" placeholder="g, ml…" maxlength="60" value="${esc(i.unit)}">
   <button type="button" data-act="dropIngredient" aria-label="Retirer cet ingrédient">×</button></div>`;
+}
+function saveMeal(next,id,original,fields){
+  if(id && JSON.stringify(next.meals[id])!==JSON.stringify(original)) throw Error('La fiche a changé. Rouvre-la.');
+  const sortOrder=original?.sortOrder ?? Object.values(next.meals).reduce((max,m)=>Math.max(max,m.sortOrder),-1)+1;
+  const key=id || crypto.randomUUID();
+  next.meals[key]=recipe({...original,...fields,sortOrder});
+  return key;
+}
+function editIngredient(id=null,target=null){
+  const original=id ? state.meals[id] : null;
+  const ingredient=original?.ingredients[0];
+  openDialog(id?'Modifier l’ingrédient':'Nouvel ingrédient',`<form id="ingredientForm">
+    <label>Nom de l’ingrédient<input name="name" placeholder="Ex. : Pommes de terre" required maxlength="160" value="${esc(original?.name)}"></label>
+    <label>Quantité (facultative)<input type="number" name="qty" step="any" min="0.000001" value="${esc(ingredient?.qty)}"></label>
+    <label>Unité (facultative)<input name="unit" maxlength="60" placeholder="g, pièces…" value="${esc(ingredient?.unit)}"></label>
+    <label>Quantité pour<select name="portions">${portions(original?.portions ?? 2)}</select></label>
+    <button class="primary">${target?'Enregistrer et ajouter au repas':'Enregistrer l’ingrédient'}</button></form>`);
+  $('ingredientForm').onsubmit=guard(async event=>{
+    event.preventDefault();
+    const f=new FormData(event.currentTarget), name=f.get('name').trim();
+    if(!name) throw Error('Renseigne le nom de l’ingrédient.');
+    const qty=f.get('qty') ? Number(f.get('qty')) : null;
+    await change(next=>{
+      const key=saveMeal(next,id,original,{kind:'ingredient',name,portions:Number(f.get('portions')),
+        ingredients:[{name,qty,unit:f.get('unit').trim()}]});
+      if(target) changeSlot(next,target.week,target.day,target.slot,ids=>ids.push(key));
+    });
+    dialog.close();
+    if(!id && !target){page='ingredients';$('search').value='';render();}
+    message(target?'Ingrédient ajouté au repas.':'Ingrédient enregistré.');
+  });
 }
 function editRecipe(id) {
   const original=id?state.meals[id]:null, m=original||recipe({name:''});
@@ -233,11 +272,8 @@ function editRecipe(id) {
     }
     const name=f.get('name').trim(); if(!name) throw Error('Renseigne le nom du repas.');
     await change(next=>{
-      if(id && JSON.stringify(next.meals[id])!==JSON.stringify(original)) throw Error('La recette a changé. Rouvre sa fiche.');
-      const order=Object.values(next.meals).reduce((max,r)=>Math.max(max,r.sortOrder),-1);
-      next.meals[id||crypto.randomUUID()]=recipe({...m,name,note:f.get('note').trim(),equipment:f.getAll('equipment'),
-        portions:Number(f.get('portions')), ingredients, steps:f.get('steps').split('\n').map(s=>s.trim()).filter(Boolean),
-        sortOrder:id?m.sortOrder:order+1});
+      saveMeal(next,id,original,{name,note:f.get('note').trim(),equipment:f.getAll('equipment'),
+        portions:Number(f.get('portions')), ingredients, steps:f.get('steps').split('\n').map(s=>s.trim()).filter(Boolean)});
     });
     dialog.close();message('Recette enregistrée.');
   });
@@ -253,11 +289,16 @@ async function assign(id,key,day,slot,from=null) {
   });
 }
 function pick({week,day,date,slot}){
-  openDialog(`${day} ${formatWeekBoundary(date)} · ${SLOTS[slot]}`,`<div class="meal-picker"><input id="pickSearch" type="search" placeholder="Rechercher un repas…" aria-label="Rechercher un repas"><div class="meal-picker" id="pickList"></div></div>`);
+  openDialog(`${day} ${formatWeekBoundary(date)} · ${SLOTS[slot]}`,`<div class="meal-picker"><input id="pickSearch" type="search" placeholder="Recette ou ingrédient…" aria-label="Rechercher une recette ou un ingrédient"><label>Trier par <select id="pickOrder"></select></label><button type="button" id="pickIngredient">+ Nouvel ingrédient</button><div class="meal-picker" id="pickList"></div></div>`);
   function update(){
     const rows=sortedMeals().filter(([,m])=>fold(m.name).includes(fold($('pickSearch').value)));
     $('pickList').innerHTML=rows.map(([id,m])=>`<button data-pick="${esc(id)}">${esc(m.name)}</button>`).join('')||empty('Aucun repas disponible.');
   }
+  const order=$('pickOrder');
+  order.innerHTML=$('mealOrder').innerHTML;
+  order.value=$('mealOrder').value;
+  order.onchange=()=>{setMealOrder(order.value);update();};
+  $('pickIngredient').onclick=()=>editIngredient(null,{week,day,slot});
   $('pickSearch').oninput=update;update();
   $('pickList').onclick=guard(async e=>{const btn=e.target.closest('[data-pick]');if(!btn)return;await assign(btn.dataset.pick,week,day,slot);dialog.close();message('Repas planifié.');});
 }
@@ -339,7 +380,7 @@ async function firebaseDialog(){
 
 document.addEventListener('click',guard(async e=>{
   const button=e.target.closest('button');if(!button)return;
-  if(button.dataset.page){page=button.dataset.page;message('');render();return;}
+  if(button.dataset.page){if(page!==button.dataset.page) $('search').value='';page=button.dataset.page;message('');render();return;}
   if(button.hasAttribute('data-today')||button.dataset.shift){
     weekOffset=button.dataset.shift ? weekOffset+Number(button.dataset.shift) : 0;
     updateCalendar();render();return;
@@ -347,7 +388,7 @@ document.addEventListener('click',guard(async e=>{
   const {act,id}=button.dataset, slot=button.closest('.slot');
   switch(act){
     case 'detail': detail(id);return;
-    case 'edit': editRecipe(id);return;
+    case 'edit': if(state.meals[id]?.kind==='ingredient') editIngredient(id); else editRecipe(id);return;
     case 'plan': plan(id);return;
     case 'pick': pick(slot.dataset);return;
     case 'remove':
@@ -360,9 +401,10 @@ document.addEventListener('click',guard(async e=>{
       const meal=state.meals[id];
       if(!meal) throw Error('Cette recette a déjà été supprimée.');
       const fromDetail=dialog.open;
-      openDialog('Supprimer la recette ?',`<p>« ${esc(meal.name)} » sera supprimée des recettes et de tous les repas où elle est planifiée.</p>
+      const label=meal.kind==='ingredient'?'Supprimer l’ingrédient':'Supprimer la recette';
+      openDialog(label+' ?',`<p>« ${esc(meal.name)} » disparaîtra du catalogue et de tous les repas où tu l’as ajouté.</p>
         <div class="actions"><button type="button" id="cancelDelete">Annuler</button>
-        ${uiButton('confirmDelete','Supprimer la recette',id,'danger')}</div>`);
+        ${uiButton('confirmDelete',label,id,'danger')}</div>`);
       $('cancelDelete').onclick=()=>fromDetail && state.meals[id] ? detail(id) : dialog.close();
       $('cancelDelete').focus();return;
     }
@@ -375,9 +417,10 @@ document.addEventListener('click',guard(async e=>{
           }
         }
       });
-      dialog.close();message('Recette supprimée de cet essai.');return;
+      dialog.close();message('Fiche supprimée.');return;
   }
   switch(button.id){
+    case 'newIngredient':editIngredient();break;
     case 'newMeal':editRecipe();break;
     case 'close':dialog.close();break;
     case 'reset': {
@@ -428,7 +471,7 @@ document.addEventListener('dragstart',e=>{
 document.addEventListener('dragover',e=>{
   if(!drag)return;
   const tab=e.target.closest('[data-page]');
-  if(tab && ['planning','recettes'].includes(tab.dataset.page) && tab.dataset.page!==page){page=tab.dataset.page;render();}
+  if(tab && ['planning','recettes','ingredients'].includes(tab.dataset.page) && tab.dataset.page!==page){page=tab.dataset.page;render();}
   const target=e.target.closest('.slot,#recipes .card,#recipes');
   if(target){e.preventDefault();target.classList.add('over');}
 });
@@ -442,12 +485,21 @@ document.addEventListener('drop',guard(async e=>{
   if(target){await assign(id,target.dataset.week,target.dataset.day,target.dataset.slot,from);return;}
   if(!e.target.closest('#recipes'))return;
   if(from){await change(next=>changeSlot(next,from.week,from.day,from.slot,ids=>{const i=ids.indexOf(id);if(i>=0)ids.splice(i,1);}));return;}
+  if($('mealOrder').value==='alpha'){message('Choisis « Ordre personnalisé » pour déplacer les fiches.');return;}
   const before=e.target.closest('.card')?.dataset.id;if(!before||id===before)return;
   await change(next=>{
     const ids=sortedMeals(true).map(([k])=>k).filter(k=>k!==id);
     ids.splice(ids.indexOf(before),0,id);ids.forEach((k,i)=>{next.meals[k].sortOrder=i;});
   });
 }));
+const orderKey='tableau-repas.tri';
+function setMealOrder(value){
+  $('mealOrder').value=value;
+  localStorage.setItem(orderKey,value);
+  if(page==='recettes'||page==='ingredients') drawRecipes();
+}
+$('mealOrder').value=localStorage.getItem(orderKey)==='alpha'?'alpha':'manual';
+$('mealOrder').onchange=e=>setMealOrder(e.target.value);
 $('search').oninput=drawRecipes;$('filter').onchange=drawRecipes;$('archived').onchange=drawRecipes;
 $('guideSearch').oninput=drawGuide;$('shoppingPortions').onchange=drawShopping;
 $('filter').innerHTML=opt('','Tous les appareils')+EQUIPMENT.map(e=>opt(e,e)).join('');

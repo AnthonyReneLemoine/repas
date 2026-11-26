@@ -128,3 +128,18 @@ test('le planning couvre aujourd’hui jusqu’au dimanche de la semaine suivant
   assert.equal(next[0].date,'2026-12-28');
   assert.deepEqual(next.at(-1),{date:'2027-01-03',day:'Dimanche',week:'2026-12-28'});
 });
+
+test('un ingrédient seul est conservé, planifiable et compté dans les courses',async()=>{
+  const {dinnerMessage}=await import('../modele.mjs');
+  const s=sampleState(monday);
+  const name='Pommes de terre';
+  s.meals.pdt=recipe({kind:'ingredient',name,ingredients:[{name,qty:400,unit:'g'}]});
+  s.weeks[monday].Jeudi.dinner=['pdt'];
+  const restored=readBackup(backup(s));
+  assert.equal(restored.meals.pdt.kind,'ingredient');
+  assert.equal(restored.meals.tartines.kind,undefined);
+  assert.equal(shopping(restored,monday,4).items.find(i=>i.name===name).qty,800);
+  assert.match(dinnerMessage(restored,smsDates(monday)),/Jeudi 19\/11 : Pommes de terre/);
+  s.meals.pdt.ingredients[0].qty=null;
+  assert.equal(shopping(readBackup(backup(s)),monday,2).items.find(i=>i.name===name).qty,null);
+});

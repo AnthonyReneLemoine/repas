@@ -109,7 +109,7 @@ export function dinnerMessage(state, dates, model = state.settings?.sms ?? defau
 }
 
 export function recipe(raw) {
-  return { name: raw.name, note: raw.note || '', portions: raw.portions || 2,
+  return { ...(raw.kind === 'ingredient' ? {kind:'ingredient'} : {}), name: raw.name, note: raw.note || '', portions: raw.portions || 2,
     equipment: raw.equipment || [], ingredients: raw.ingredients || [], steps: raw.steps || [],
     archived: Boolean(raw.archived), sortOrder: Number.isFinite(raw.sortOrder) ? raw.sortOrder : 999999 };
 }
@@ -165,6 +165,7 @@ export function readBackup(raw) {
       !Array.isArray(m.steps) || !m.steps.every(x=>textField(x,5000)) || !Array.isArray(m.ingredients) ||
       !m.ingredients.every(i => plain(i) && textField(i.name,160) && i.name.trim() && textField(i.unit,60) &&
         (i.qty === null || Number.isFinite(i.qty) && i.qty > 0)) || typeof m.archived !== 'boolean' || !Number.isFinite(m.sortOrder)) fail();
+    if (m.kind === 'ingredient' && (m.ingredients.length !== 1 || m.ingredients[0].name !== m.name)) fail();
     state.meals[id] = recipe(m);
   }
   for (const [monday,days] of Object.entries(raw.weeks)) {
