@@ -72,6 +72,7 @@ function render() {
   document.querySelectorAll('.weekLabel').forEach(n=>n.textContent=weekLabel());
   if(page==='planning') drawBoard();
   if(dialog.open && $('smsRange')) refreshSms();
+  if(dialog.open && $('recipeIngredientNames')) refreshIngredientNames();
   if(page==='recettes'||page==='ingredients') drawRecipes();
   if(page==='courses') drawShopping();
   if(page==='guide') drawGuide();
@@ -224,8 +225,16 @@ function detail(id,n=state.meals[id]?.portions){
   $('scale').onchange=()=>detail(id,Number($('scale').value));
   $('printRecipe').onclick=()=>printSheet(m.name,`<p>${n} personne${n>1?'s':''}</p>${detailBody(m,n)}`);
 }
+function refreshIngredientNames(){
+  const unique = new Map();
+  for(const meal of Object.values(state.meals)){
+    if(meal.kind==='ingredient' && !meal.archived) unique.set(fold(meal.name),meal.name);
+  }
+  const names = [...unique.values()].sort(byName.compare);
+  $('recipeIngredientNames').innerHTML = names.map(name=>`<option value="${esc(name)}"></option>`).join('');
+}
 function ingredientRow(i={name:'',qty:null,unit:''}){
-  return `<div class="ingredient"><input aria-label="Ingrédient" placeholder="Ingrédient" maxlength="160" value="${esc(i.name)}">
+  return `<div class="ingredient"><input list="recipeIngredientNames" autocomplete="off" aria-label="Ingrédient" placeholder="Rechercher un ingrédient…" maxlength="160" value="${esc(i.name)}">
   <input type="number" step="any" min="0.000001" aria-label="Quantité" placeholder="Qté" value="${esc(i.qty??'')}">
   <input aria-label="Unité" placeholder="g, ml…" maxlength="60" value="${esc(i.unit)}">
   <button type="button" data-act="dropIngredient" aria-label="Retirer cet ingrédient">×</button></div>`;
@@ -268,10 +277,11 @@ function editRecipe(id) {
   <label>Note<textarea name="note" rows="2" maxlength="5000">${esc(m.note)}</textarea></label>
   <label>Quantités de base<select name="portions">${portions(m.portions)}</select></label>
   <fieldset><legend>Appareils</legend>${EQUIPMENT.map(e=>`<label><input type="checkbox" name="equipment" value="${esc(e)}" ${m.equipment.includes(e)?'checked':''}> ${esc(e)}</label>`).join('')}</fieldset>
-  <div class="fields"><strong>Ingrédients</strong><div class="fields" id="ingredients">${(m.ingredients.length?m.ingredients:[undefined]).map(ingredientRow).join('')}</div>
+  <div class="fields"><strong>Ingrédients</strong><datalist id="recipeIngredientNames"></datalist><div class="fields" id="ingredients">${(m.ingredients.length?m.ingredients:[undefined]).map(ingredientRow).join('')}</div>
   <button type="button" id="addIngredient">+ Ajouter un ingrédient</button></div>
   <label>Étapes, une par ligne<textarea name="steps" rows="4">${esc(m.steps.join('\n'))}</textarea></label>
   <button class="primary">Enregistrer la recette</button></form>`);
+  refreshIngredientNames();
   $('addIngredient').onclick=()=>{ $('ingredients').insertAdjacentHTML('beforeend',ingredientRow()); $('ingredients').lastElementChild.firstElementChild.focus(); };
   $('editForm').onsubmit=guard(async event=>{
     event.preventDefault(); const f=new FormData(event.currentTarget);
