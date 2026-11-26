@@ -1,4 +1,4 @@
-import { catalogue, catalogueMarker, ingredientKey } from './catalogue.mjs';
+import { catalogue, catalogueMarker, catalogueMarkers, ingredientKey } from './catalogue.mjs';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
   getAuth,
@@ -51,12 +51,14 @@ async function initializeCatalog(db, state) {
   const seeded = structuredClone(state);
   populateIngredients(seeded);
   const entries = Object.entries(seeded.meals).filter(([id]) => !state.meals[id]);
-  const marker = doc(db,'weekPlans',overlayId('settings',catalogueMarker));
-  const previous = doc(db,'weekPlans',overlayId('settings','catalogueV1'));
+  const markers=catalogueMarkers.map(id=>doc(db,'weekPlans',overlayId('settings',id)));
   await runTransaction(db, async tx => {
-    if ((await tx.get(marker)).data()?.value === true) return;
-    const previousInstalled=(await tx.get(previous)).data()?.value === true;
-    const missing=previousInstalled ? entries.filter(([,value])=>catalogue.get(ingredientKey(value.name))?.version===2) : entries;
+    const installed=await Promise.all(markers.map(async ref=>(await tx.get(ref)).data()?.value === true));
+    if (installed.at(-1)) return;
+    const missing=entries.filter(([,value])=>{
+      const version=catalogue.get(ingredientKey(value.name)).version ?? 1;
+      return !installed[version-1];
+    });
     const records = await Promise.all(missing.map(async ([id,value]) => {
       const ref = doc(db,'weekPlans',overlayId('meals',id));
       return {ref,exists:(await tx.get(ref)).exists(),id,value};
@@ -64,8 +66,9 @@ async function initializeCatalog(db, state) {
     for (const {ref,exists,id,value} of records) {
       if (!exists) tx.set(ref,{kind:'meals',id,value});
     }
-    if(!previousInstalled) tx.set(previous,{kind:'settings',id:'catalogueV1',value:true});
-    tx.set(marker,{kind:'settings',id:catalogueMarker,value:true});
+    catalogueMarkers.forEach((id,index)=>{
+      if (!installed[index]) tx.set(markers[index],{kind:'settings',id,value:true});
+    });
   });
 }
 
@@ -91,7 +94,7 @@ export function connect(callbacks) {
       for (const snap of weekDocs) {
         if (!snap.id.startsWith(PREFIX)) continue;
         const {kind,id,value} = snap.data();
-        if (kind === 'settings' && (id === 'catalogueV1' || id === catalogueMarker) && snap.id === overlayId(kind,id)) {
+        if (kind === 'settings' && catalogueMarkers.includes(id) && snap.id === overlayId(kind,id)) {
           if (value === true) state.settings[id]=true;
           continue;
         }

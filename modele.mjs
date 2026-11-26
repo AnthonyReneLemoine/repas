@@ -1,4 +1,4 @@
-import { catalogue, catalogueMarker, ingredientKey } from './catalogue.mjs';
+import { catalogue, catalogueMarker, catalogueMarkers, ingredientKey } from './catalogue.mjs';
 
 export function getMondayIsoForToday() {
   const now = new Date();
@@ -122,14 +122,13 @@ export function populateIngredients(state) {
   const existing = new Set(Object.values(state.meals)
     .filter(meal => meal.kind === 'ingredient').map(meal => ingredientKey(meal.name)));
   for (const [key,{name,version=1}] of catalogue) {
-    if (version===1 && state.settings.catalogueV1) continue;
+    if (state.settings[catalogueMarkers[version-1]]) continue;
     const id = 'ingredient-classique-' + key;
     if (!existing.has(key) && !state.meals[id]) {
       state.meals[id] = recipe({kind:'ingredient',name,ingredients:[{name,qty:null,unit:''}]});
     }
   }
-  state.settings.catalogueV1 = true;
-  state.settings[catalogueMarker] = true;
+  for (const marker of catalogueMarkers) state.settings[marker] = true;
 }
 
 export function shopping(state, monday, portions) {
@@ -173,8 +172,9 @@ export function readBackup(raw) {
   const fail = () => { throw Error('Sauvegarde incompatible ou données invalides.'); };
   if (raw?.format !== 'tableau-repas' || raw.version !== 1 || !plain(raw.meals) || !plain(raw.weeks)) fail();
   const state = emptyState();
-  if (raw.settings?.catalogueV1 === true) state.settings.catalogueV1 = true;
-  if (raw.settings?.[catalogueMarker] === true) state.settings[catalogueMarker] = true;
+  for (const marker of catalogueMarkers) {
+    if (raw.settings?.[marker] === true) state.settings[marker] = true;
+  }
   if (raw.settings?.sms !== undefined) {
     if (!validSms(raw.settings.sms)) fail();
     state.settings.sms = {intro:raw.settings.sms.intro,fin:raw.settings.sms.fin};

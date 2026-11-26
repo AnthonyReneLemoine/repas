@@ -79,14 +79,50 @@ const selectionParFamille = {
     'Sirop de menthe', 'Café', 'Café décaféiné', 'Thé noir', 'Thé vert', 'Infusion de verveine', 'Chocolat chaud'
   ]
 };
-export const familles = Object.keys(selectionParFamille);
-export const catalogueMarker = 'catalogueV2';
-for (const [famille, names] of Object.entries(selectionParFamille)) {
+export const catalogueMarkers = ['catalogueV1','catalogueV2','catalogueV3'];
+export const catalogueMarker = catalogueMarkers.at(-1);
+export const familles = [];
+
+function addFamily(famille,names,version,cuisine) {
+  if (!familles.includes(famille)) familles.push(famille);
   for (const name of names) {
-    const key = ingredientKey(name);
-    if (!catalogue.has(key)) {
-      catalogue.set(key,{name,cuisines:famille==='Fromages français'?['Française']:[],version:2});
-    }
-    catalogue.get(key).famille = famille;
+    const key=ingredientKey(name);
+    const entry=catalogue.get(key) ?? {name,cuisines:[],version};
+    entry.famille=famille;
+    if (cuisine && !entry.cuisines.includes(cuisine)) entry.cuisines.push(cuisine);
+    catalogue.set(key,entry);
   }
 }
+
+for (const [famille,names] of Object.entries(selectionParFamille)) {
+  addFamily(famille,names,2,famille==='Fromages français'?'Française':null);
+}
+
+addFamily('Sauces',[
+  'Mayonnaise', 'Vinaigrette', 'Béchamel', 'Sauce hollandaise', 'Sauce béarnaise',
+  'Beurre blanc', 'Sauce tartare', 'Aïoli', 'Sauce au poivre', 'Sauce au roquefort',
+  'Sauce à la moutarde', 'Sauce au beurre citronné', 'Sauce gribiche', 'Sauce rémoulade',
+  'Sauce aux champignons'
+],3,'Française');
+addFamily('Sauces',['Sauce soja','Sauce d’huître','Sauce hoisin','Sauce aigre-douce'],3,'Chinoise');
+addFamily('Sauces',['Sauce barbecue','Ketchup','Sauce burger','Sauce ranch','Sauce Buffalo'],3,'Américaine');
+addFamily('Sauces',['Raïta','Chutney de mangue','Sauce tikka masala'],3,'Indienne');
+addFamily('Sauces',['Harissa','Sauce au tahini','Toum'],3,'Arabe');
+addFamily('Sauces',['Sauce tomate','Sauce bolognaise','Pesto au basilic','Sauce arrabbiata',
+  'Sauce teriyaki','Sauce sriracha','Sauce nuoc-mâm','Sauce Worcestershire'],3);
+
+// Sélection de la presqu’île de Rhuys et des criées de Quiberon et de Lorient.
+addFamily('Poissons',['Bar','Dorade','Lieu jaune','Sole','Lotte','Rouget','Sardine','Maquereau',
+  'Merlu','Merlan','Saint-pierre','Tacaud','Lieu noir','Julienne','Églefin'],3,'Française');
+addFamily('Poissons',['Saumon','Cabillaud'],3);
+
+addFamily('Pains',['Baguette','Baguette de tradition','Ficelle','Pain de campagne','Pain au levain',
+  'Pain complet','Pain de seigle','Pain aux céréales','Pain de mie','Pain aux noix',
+  'Pain au maïs','Pain de petit épeautre','Pain sans gluten','Fougasse'],3,'Française');
+addFamily('Pains',['Pain pita'],3,'Arabe');
+addFamily('Pains',['Naan','Chapati'],3,'Indienne');
+addFamily('Pains',['Pain à burger','Pain à hot-dog','Bagel'],3,'Américaine');
+addFamily('Pains',['Ciabatta','Focaccia'],3);
+addFamily('Viennoiseries',['Croissant au beurre','Croissant aux amandes','Pain au chocolat','Pain aux raisins',
+  'Chausson aux pommes','Pain au lait','Pain suisse','Brioche','Brioche tressée','Brioche aux pépites de chocolat',
+  'Brioche feuilletée','Chouquette','Kouign-amann'],3,'Française');

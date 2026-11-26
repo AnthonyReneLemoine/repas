@@ -187,3 +187,26 @@ test('les nouveaux fromages et boissons complètent le premier catalogue sans r�
   assert.equal(restored.settings[catalogueMarker],true);
   assert.deepEqual(restored,state);
 });
+
+test('les sauces, poissons, pains et viennoiseries complètent un catalogue V2 déjà personnalisé',async()=>{
+  const {populateIngredients}=await import('../modele.mjs');
+  const {catalogue,ingredientKey}=await import('../catalogue.mjs');
+  const s=sampleState(monday);
+  s.settings={catalogueV1:true,catalogueV2:true};
+  s.meals.perso=recipe({kind:'ingredient',name:'Baguette',ingredients:[{name:'Baguette',qty:1,unit:'pièce'}]});
+  populateIngredients(s);
+  for(const [name,famille] of [['Sauce hollandaise','Sauces'],['Lieu jaune','Poissons'],
+    ['Pain de seigle','Pains'],['Pain au chocolat','Viennoiseries']]){
+    const key=ingredientKey(name);
+    assert.equal(s.meals['ingredient-classique-'+key].name,name);
+    assert.equal(catalogue.get(key).famille,famille);
+  }
+  for(const key of ['baguette','cola','saumon','sauce-soja','pain-pita']) assert.equal(s.meals['ingredient-classique-'+key],undefined);
+  assert.equal(catalogue.get('pain-pita').famille,'Pains');
+  assert.equal(catalogue.get('sauce-soja').famille,'Sauces');
+  assert.equal(s.meals.perso.ingredients[0].qty,1);
+  delete s.meals['ingredient-classique-lieu-jaune'];
+  const restored=readBackup(backup(s));
+  populateIngredients(restored);
+  assert.deepEqual(restored,s);
+});
