@@ -8,7 +8,7 @@ import {
   signOut,
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import { collection, doc, getFirestore, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
-import { validSms, emptyState, recipe, weekDays, normalizeMondayDate, shiftMonday, getMondayIsoForToday } from './modele.mjs';
+import { validSms, emptyState, populateIngredients, recipe, weekDays, normalizeMondayDate, shiftMonday, getMondayIsoForToday } from './modele.mjs';
 const ALLOWED_UID = 'ENgOZhuh0ca3tqeb0IbII2CCVzX2';
 const PREFIX = 'essai-sites-v1-';
 const overlayId = (kind,id) => PREFIX + kind + '-' + id;
@@ -46,6 +46,24 @@ const firebaseConfig = {
   appId: '1:726974600317:web:d99ff0a1c11c1fed9f0d14'
 };
 
+async function initializeCatalog(db, state) {
+  const seeded = structuredClone(state);
+  populateIngredients(seeded);
+  const entries = Object.entries(seeded.meals).filter(([id]) => !state.meals[id]);
+  const marker = doc(db,'weekPlans',overlayId('settings','catalogueV1'));
+  await runTransaction(db, async tx => {
+    if ((await tx.get(marker)).data()?.value === true) return;
+    const records = await Promise.all(entries.map(async ([id,value]) => {
+      const ref = doc(db,'weekPlans',overlayId('meals',id));
+      return {ref,exists:(await tx.get(ref)).exists(),id,value};
+    }));
+    for (const {ref,exists,id,value} of records) {
+      if (!exists) tx.set(ref,{kind:'meals',id,value});
+    }
+    tx.set(marker,{kind:'settings',id:'catalogueV1',value:true});
+  });
+}
+
 export function connect(callbacks) {
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app), auth = getAuth(app);
@@ -59,7 +77,8 @@ export function connect(callbacks) {
       callbacks.error(Error('Ce compte ne dispose pas des droits requis.'));
       return;
     }
-    let mealDocs, weekDocs;
+    let mealDocs, weekDocs, catalogStarted=false;
+    let mealsReady=false, weeksReady=false;
     function publish() {
       if (!mealDocs || !weekDocs) return;
       source = readSource(mealDocs,weekDocs);
@@ -67,6 +86,10 @@ export function connect(callbacks) {
       for (const snap of weekDocs) {
         if (!snap.id.startsWith(PREFIX)) continue;
         const {kind,id,value} = snap.data();
+        if (kind === 'settings' && id === 'catalogueV1' && snap.id === overlayId(kind,id)) {
+          if (value === true) state.settings.catalogueV1=true;
+          continue;
+        }
         if (kind === 'settings' && id === 'sms' && snap.id === overlayId(kind,id)) {
           if (validSms(value)) state.settings.sms = {intro:value.intro,fin:value.fin};
           continue;
@@ -77,10 +100,17 @@ export function connect(callbacks) {
       }
       active = true;
       callbacks.data(state);
+      if (!state.settings.catalogueV1 && !catalogStarted && mealsReady && weeksReady) {
+        catalogStarted=true;
+        initializeCatalog(db,state).catch(error=>{
+          if (active) callbacks.catalogError?.(error);
+          catalogStarted=false;
+        });
+      }
     }
     const failed = async error => { stop(); await signOut(auth); callbacks.error(error); };
-    stops.push(onSnapshot(collection(db,'meals'), s=>{mealDocs=s.docs; publish();}, failed));
-    stops.push(onSnapshot(collection(db,'weekPlans'), s=>{weekDocs=s.docs; publish();}, failed));
+    stops.push(onSnapshot(collection(db,'meals'), {includeMetadataChanges:true}, s=>{mealDocs=s.docs;mealsReady=!s.metadata?.fromCache;publish();}, failed));
+    stops.push(onSnapshot(collection(db,'weekPlans'), {includeMetadataChanges:true}, s=>{weekDocs=s.docs;weeksReady=!s.metadata?.fromCache;publish();}, failed));
   });
   return {
     async loginWithGoogle() {

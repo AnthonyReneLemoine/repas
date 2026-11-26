@@ -1,3 +1,5 @@
+import { catalogue, ingredientKey } from './catalogue.mjs';
+
 export function getMondayIsoForToday() {
   const now = new Date();
   const offset = (now.getDay() + 6) % 7;
@@ -114,6 +116,20 @@ export function recipe(raw) {
     archived: Boolean(raw.archived), sortOrder: Number.isFinite(raw.sortOrder) ? raw.sortOrder : 999999 };
 }
 
+// Le marqueur évite de recréer les fiches que l’utilisateur a supprimées ou renommées.
+export function populateIngredients(state) {
+  if (state.settings.catalogueV1 === true) return;
+  const existing = new Set(Object.values(state.meals)
+    .filter(meal => meal.kind === 'ingredient').map(meal => ingredientKey(meal.name)));
+  for (const [key,{name}] of catalogue) {
+    const id = 'ingredient-classique-' + key;
+    if (!existing.has(key) && !state.meals[id]) {
+      state.meals[id] = recipe({kind:'ingredient',name,ingredients:[{name,qty:null,unit:''}]});
+    }
+  }
+  state.settings.catalogueV1 = true;
+}
+
 export function shopping(state, monday, portions) {
   const totals = new Map(), missing = new Set();
   const days = weekDays(state.weeks[monday]);
@@ -155,6 +171,7 @@ export function readBackup(raw) {
   const fail = () => { throw Error('Sauvegarde incompatible ou données invalides.'); };
   if (raw?.format !== 'tableau-repas' || raw.version !== 1 || !plain(raw.meals) || !plain(raw.weeks)) fail();
   const state = emptyState();
+  if (raw.settings?.catalogueV1 === true) state.settings.catalogueV1 = true;
   if (raw.settings?.sms !== undefined) {
     if (!validSms(raw.settings.sms)) fail();
     state.settings.sms = {intro:raw.settings.sms.intro,fin:raw.settings.sms.fin};

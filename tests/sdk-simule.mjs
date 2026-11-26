@@ -27,7 +27,7 @@ function notify(kind){
   const rows=[...docs.keys()].filter(path=>path.startsWith(kind+'/')).map(snapshot);
   listeners.get(kind)?.({docs:rows});
 }
-export function onSnapshot(kind,listener){listeners.set(kind,listener);notify(kind);return ()=>listeners.delete(kind);}
+export function onSnapshot(kind,options,listener){listeners.set(kind,listener);notify(kind);return ()=>listeners.delete(kind);}
 export async function runTransaction(_,operation){
   const staged=new Map();
   await operation({get:async key=>snapshot(key),set:(key,value)=>staged.set(key,value)});
