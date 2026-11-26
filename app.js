@@ -1,4 +1,4 @@
-import { catalogue, cuisines, ingredientKey } from './catalogue.mjs';
+import { catalogue, catalogueMarker, cuisines, familles, ingredientKey } from './catalogue.mjs';
 import { DAYS,SLOTS,EQUIPMENT,defaultSms,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,planningDates,smsDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,populateIngredients,readBackup,backup,diff,fold,amount } from './modele.mjs';
 import {guide} from './guide.mjs';
 
@@ -26,7 +26,7 @@ function openDialog(title,html) {
 function localState() {
   const saved=localStorage.getItem(localKey);
   const local = saved ? readBackup(JSON.parse(saved)) : sampleState(getMondayIsoForToday());
-  if (!local.settings.catalogueV1) {
+  if (!local.settings[catalogueMarker]) {
     populateIngredients(local);
     localStorage.setItem(localKey,JSON.stringify(backup(local)));
   }
@@ -101,12 +101,15 @@ function drawRecipes(){
   const ingredientsOnly=page==='ingredients';
   $('filter').hidden=ingredientsOnly;
   $('cuisineFilter').hidden=!ingredientsOnly;
+  $('familyFilter').hidden=!ingredientsOnly;
+  const famille=ingredientsOnly ? $('familyFilter').value : '';
   const cuisine=ingredientsOnly ? $('cuisineFilter').value : '';
   const searchLabel=ingredientsOnly?'Rechercher un ingrédient':'Rechercher une recette';
   $('search').placeholder=searchLabel+'…';
   $('search').setAttribute('aria-label',searchLabel);
   const search=fold($('search').value), filter=ingredientsOnly?'':$('filter').value;
   const list=sortedMeals($('archived').checked).filter(([,m])=>(m.kind==='ingredient')===ingredientsOnly && (!filter||m.equipment.includes(filter))&&
+    (!famille||catalogue.get(ingredientKey(m.name))?.famille===famille)&&
     (!cuisine||catalogue.get(ingredientKey(m.name))?.cuisines.includes(cuisine))&&
     fold([m.name,m.note,...m.ingredients.map(i=>i.name)].join(' ')).includes(search));
   $('recipes').innerHTML=list.map(([id,m])=>`<article class="card" draggable="true" data-id="${esc(id)}">
@@ -254,7 +257,7 @@ function editIngredient(id=null,target=null){
       if(target) changeSlot(next,target.week,target.day,target.slot,ids=>ids.push(key));
     });
     dialog.close();
-    if(!id && !target){page='ingredients';$('search').value='';$('cuisineFilter').value='';render();}
+    if(!id && !target){page='ingredients';$('search').value='';$('cuisineFilter').value='';$('familyFilter').value='';render();}
     message(target?'Ingrédient ajouté au repas.':'Ingrédient enregistré.');
   });
 }
@@ -514,6 +517,8 @@ $('search').oninput=drawRecipes;$('filter').onchange=drawRecipes;$('archived').o
 $('guideSearch').oninput=drawGuide;$('shoppingPortions').onchange=drawShopping;
 $('cuisineFilter').innerHTML=opt('','Toutes les cuisines')+cuisines.map(c=>opt(c,c)).join('');
 $('cuisineFilter').onchange=drawRecipes;
+$('familyFilter').innerHTML=opt('','Toutes les familles')+familles.map(f=>opt(f,f)).join('');
+$('familyFilter').onchange=drawRecipes;
 $('filter').innerHTML=opt('','Tous les appareils')+EQUIPMENT.map(e=>opt(e,e)).join('');
 $('shoppingPortions').innerHTML=portions(2);
 function updateCalendar() {

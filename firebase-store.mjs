@@ -1,3 +1,4 @@
+import { catalogue, catalogueMarker, ingredientKey } from './catalogue.mjs';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
   getAuth,
@@ -50,17 +51,21 @@ async function initializeCatalog(db, state) {
   const seeded = structuredClone(state);
   populateIngredients(seeded);
   const entries = Object.entries(seeded.meals).filter(([id]) => !state.meals[id]);
-  const marker = doc(db,'weekPlans',overlayId('settings','catalogueV1'));
+  const marker = doc(db,'weekPlans',overlayId('settings',catalogueMarker));
+  const previous = doc(db,'weekPlans',overlayId('settings','catalogueV1'));
   await runTransaction(db, async tx => {
     if ((await tx.get(marker)).data()?.value === true) return;
-    const records = await Promise.all(entries.map(async ([id,value]) => {
+    const previousInstalled=(await tx.get(previous)).data()?.value === true;
+    const missing=previousInstalled ? entries.filter(([,value])=>catalogue.get(ingredientKey(value.name))?.version===2) : entries;
+    const records = await Promise.all(missing.map(async ([id,value]) => {
       const ref = doc(db,'weekPlans',overlayId('meals',id));
       return {ref,exists:(await tx.get(ref)).exists(),id,value};
     }));
     for (const {ref,exists,id,value} of records) {
       if (!exists) tx.set(ref,{kind:'meals',id,value});
     }
-    tx.set(marker,{kind:'settings',id:'catalogueV1',value:true});
+    if(!previousInstalled) tx.set(previous,{kind:'settings',id:'catalogueV1',value:true});
+    tx.set(marker,{kind:'settings',id:catalogueMarker,value:true});
   });
 }
 
@@ -86,8 +91,8 @@ export function connect(callbacks) {
       for (const snap of weekDocs) {
         if (!snap.id.startsWith(PREFIX)) continue;
         const {kind,id,value} = snap.data();
-        if (kind === 'settings' && id === 'catalogueV1' && snap.id === overlayId(kind,id)) {
-          if (value === true) state.settings.catalogueV1=true;
+        if (kind === 'settings' && (id === 'catalogueV1' || id === catalogueMarker) && snap.id === overlayId(kind,id)) {
+          if (value === true) state.settings[id]=true;
           continue;
         }
         if (kind === 'settings' && id === 'sms' && snap.id === overlayId(kind,id)) {
@@ -100,7 +105,7 @@ export function connect(callbacks) {
       }
       active = true;
       callbacks.data(state);
-      if (!state.settings.catalogueV1 && !catalogStarted && mealsReady && weeksReady) {
+      if (!state.settings[catalogueMarker] && !catalogStarted && mealsReady && weeksReady) {
         catalogStarted=true;
         initializeCatalog(db,state).catch(error=>{
           if (active) callbacks.catalogError?.(error);

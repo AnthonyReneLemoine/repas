@@ -49,3 +49,44 @@ for (const [cuisine, names] of Object.entries(selections)) {
     catalogue.get(key).cuisines.push(cuisine);
   }
 }
+
+const selectionParFamille = {
+  'Fromages français': [
+    'Comté', 'Fromage de chèvre', 'Camembert de Normandie', 'Brie de Meaux', 'Brie de Melun',
+    'Coulommiers', 'Neufchâtel', 'Chaource', 'Brillat-savarin', 'Saint-Nectaire', 'Reblochon',
+    'Morbier', 'Tomme de Savoie', 'Beaufort', 'Abondance', 'Cantal', 'Salers', 'Laguiole',
+    'Ossau-Iraty', 'Olivet cendré', 'Emmental de Savoie', 'Mimolette', 'Saint-Paulin',
+    'Port-Salut', 'Munster', 'Maroilles', 'Époisses', 'Pont-l’évêque', 'Livarot', 'Langres',
+    'Mont d’Or', 'Roquefort', 'Bleu d’Auvergne', 'Bleu des Causses', 'Fourme d’Ambert',
+    'Fourme de Montbrison', 'Sainte-maure de Touraine', 'Crottin de Chavignol', 'Valençay',
+    'Pouligny-Saint-Pierre', 'Selles-sur-Cher', 'Rocamadour', 'Picodon', 'Pélardon', 'Banon',
+    'Chabichou du Poitou', 'Brocciu'
+  ],
+  'Sodas': [
+    'Cola', 'Cola sans sucres', 'Limonade', 'Limonade sans sucres', 'Soda à l’orange',
+    'Soda au citron-citron vert', 'Soda au pamplemousse', 'Soda au gingembre', 'Tonic', 'Tonic sans sucres'
+  ],
+  'Eaux': [
+    'Eau plate', 'Eau de source', 'Eau minérale plate', 'Eau gazeuse', 'Eau finement pétillante',
+    'Eau minérale gazeuse', 'Eau aromatisée au citron', 'Eau aromatisée à la menthe'
+  ],
+  'Jus et nectars': [
+    'Jus d’orange', 'Jus de pomme', 'Jus de raisin', 'Jus d’ananas', 'Jus de pamplemousse',
+    'Jus de tomate', 'Jus multifruits', 'Nectar d’abricot', 'Nectar de pêche'
+  ],
+  'Autres boissons sans alcool': [
+    'Thé glacé à la pêche', 'Thé glacé au citron', 'Citronnade', 'Diabolo menthe', 'Sirop de grenadine',
+    'Sirop de menthe', 'Café', 'Café décaféiné', 'Thé noir', 'Thé vert', 'Infusion de verveine', 'Chocolat chaud'
+  ]
+};
+export const familles = Object.keys(selectionParFamille);
+export const catalogueMarker = 'catalogueV2';
+for (const [famille, names] of Object.entries(selectionParFamille)) {
+  for (const name of names) {
+    const key = ingredientKey(name);
+    if (!catalogue.has(key)) {
+      catalogue.set(key,{name,cuisines:famille==='Fromages français'?['Française']:[],version:2});
+    }
+    catalogue.get(key).famille = famille;
+  }
+}

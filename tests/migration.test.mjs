@@ -165,3 +165,25 @@ test('le catalogue complète les anciennes données une fois et respecte les fic
   populateIngredients(restored);
   assert.deepEqual(restored,s);
 });
+
+test('les nouveaux fromages et boissons complètent le premier catalogue sans rétablir les fiches supprimées',async()=>{
+  const {populateIngredients}=await import('../modele.mjs');
+  const {catalogue,catalogueMarker}=await import('../catalogue.mjs');
+  const state=sampleState(monday);
+  state.settings.catalogueV1=true;
+  state.meals.eau=recipe({kind:'ingredient',name:'EAU PLATE',ingredients:[{name:'EAU PLATE',qty:1,unit:'L'}]});
+  populateIngredients(state);
+  assert.equal(state.meals['ingredient-classique-comte'],undefined);
+  assert.equal(state.meals['ingredient-classique-eau-plate'],undefined);
+  assert.equal(state.meals.eau.ingredients[0].qty,1);
+  assert.equal(state.meals['ingredient-classique-roquefort'].name,'Roquefort');
+  assert.deepEqual(catalogue.get('roquefort').cuisines,['Française']);
+  assert.equal(catalogue.get('comte').famille,'Fromages français');
+  assert.equal(catalogue.get('cola').famille,'Sodas');
+  assert.equal(catalogue.get('eau-gazeuse').famille,'Eaux');
+  delete state.meals['ingredient-classique-roquefort'];
+  const restored=readBackup(backup(state));
+  populateIngredients(restored);
+  assert.equal(restored.settings[catalogueMarker],true);
+  assert.deepEqual(restored,state);
+});

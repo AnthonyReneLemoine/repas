@@ -1,4 +1,4 @@
-import { catalogue, ingredientKey } from './catalogue.mjs';
+import { catalogue, catalogueMarker, ingredientKey } from './catalogue.mjs';
 
 export function getMondayIsoForToday() {
   const now = new Date();
@@ -118,16 +118,18 @@ export function recipe(raw) {
 
 // Le marqueur évite de recréer les fiches que l’utilisateur a supprimées ou renommées.
 export function populateIngredients(state) {
-  if (state.settings.catalogueV1 === true) return;
+  if (state.settings[catalogueMarker] === true) return;
   const existing = new Set(Object.values(state.meals)
     .filter(meal => meal.kind === 'ingredient').map(meal => ingredientKey(meal.name)));
-  for (const [key,{name}] of catalogue) {
+  for (const [key,{name,version=1}] of catalogue) {
+    if (version===1 && state.settings.catalogueV1) continue;
     const id = 'ingredient-classique-' + key;
     if (!existing.has(key) && !state.meals[id]) {
       state.meals[id] = recipe({kind:'ingredient',name,ingredients:[{name,qty:null,unit:''}]});
     }
   }
   state.settings.catalogueV1 = true;
+  state.settings[catalogueMarker] = true;
 }
 
 export function shopping(state, monday, portions) {
@@ -172,6 +174,7 @@ export function readBackup(raw) {
   if (raw?.format !== 'tableau-repas' || raw.version !== 1 || !plain(raw.meals) || !plain(raw.weeks)) fail();
   const state = emptyState();
   if (raw.settings?.catalogueV1 === true) state.settings.catalogueV1 = true;
+  if (raw.settings?.[catalogueMarker] === true) state.settings[catalogueMarker] = true;
   if (raw.settings?.sms !== undefined) {
     if (!validSms(raw.settings.sms)) fail();
     state.settings.sms = {intro:raw.settings.sms.intro,fin:raw.settings.sms.fin};
