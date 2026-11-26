@@ -96,7 +96,7 @@ function drawRecipes(){
     ${uiButton('detail',m.name,id,'dish-title')}${m.archived?'<small>Archivée</small>':''}
     <div>${m.equipment.map(e=>`<span class="tag">${esc(e)}</span>`).join(' ')}</div>
     ${m.note?`<p class="note">${esc(m.note)}</p>`:''}<small>${m.portions} personnes · ${m.ingredients.length} ingrédient${m.ingredients.length>1?'s':''}</small>
-    <div class="actions">${uiButton('edit','Modifier',id)}${!m.archived?uiButton('plan','Planifier',id):''}</div></article>`).join('')||empty('Aucune recette pour cette sélection.');
+    <div class="actions">${uiButton('edit','Modifier',id)}${!m.archived?uiButton('plan','Planifier',id):''}${uiButton('delete','Supprimer',id,'danger')}</div></article>`).join('')||empty('Aucune recette pour cette sélection.');
 }
 const ingredientText=(i,factor=1)=>i.qty===null?[i.name,i.unit].filter(Boolean).join(' · '):[amount(i.qty*factor),i.unit,'—',i.name].filter(Boolean).join(' ');
 function currentShopping(){return shopping(state,monday,Number($('shoppingPortions').value));}
@@ -354,10 +354,25 @@ document.addEventListener('click',guard(async e=>{
     case 'dropIngredient':button.closest('.ingredient').remove();return;
     case 'archive':
       await change(next=>{next.meals[id].archived=!next.meals[id].archived;});dialog.close();message('Archivage mis à jour.');return;
-    case 'delete':
-      if(!confirm(`Supprimer « ${state.meals[id].name} » et ses occurrences dans le planning d’essai ?`))return;
-      await change(next=>{delete next.meals[id];for(const days of Object.values(next.weeks))
-        for(const slots of Object.values(days))for(const key of Object.keys(slots))slots[key]=slots[key].filter(v=>v!==id);});
+    case 'delete': {
+      const meal=state.meals[id];
+      if(!meal) throw Error('Cette recette a déjà été supprimée.');
+      const fromDetail=dialog.open;
+      openDialog('Supprimer la recette ?',`<p>« ${esc(meal.name)} » sera supprimée des recettes et de tous les repas où elle est planifiée.</p>
+        <div class="actions"><button type="button" id="cancelDelete">Annuler</button>
+        ${uiButton('confirmDelete','Supprimer la recette',id,'danger')}</div>`);
+      $('cancelDelete').onclick=()=>fromDetail && state.meals[id] ? detail(id) : dialog.close();
+      $('cancelDelete').focus();return;
+    }
+    case 'confirmDelete':
+      await change(next=>{
+        delete next.meals[id];
+        for(const days of Object.values(next.weeks)){
+          for(const slots of Object.values(days)){
+            for(const key of Object.keys(slots)) slots[key]=slots[key].filter(v=>v!==id);
+          }
+        }
+      });
       dialog.close();message('Recette supprimée de cet essai.');return;
   }
   switch(button.id){
