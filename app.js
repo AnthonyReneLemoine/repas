@@ -1,4 +1,4 @@
-import { DAYS,SLOTS,EQUIPMENT,defaultSms,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,planningDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
+import { DAYS,SLOTS,EQUIPMENT,defaultSms,dinnerMessage,formatDateToLocalIso,getMondayIsoForToday,getWeekDates,planningDates,smsDates,formatWeekBoundary,shiftMonday,weekDays,recipe,shopping,sampleState,emptyState,readBackup,backup,diff,fold,amount } from './modele.mjs';
 import {guide} from './guide.mjs';
 
 const $ = id => document.getElementById(id);
@@ -76,6 +76,7 @@ function sortedMeals(includeArchived=false) {
 }
 function visibleDates() { return planningDates(today,weekOffset); }
 function periodLabel(dates) {
+  if(dates.length===1) return `${dates[0].day} ${formatWeekBoundary(dates[0].date,true)}`;
   return `Du ${formatWeekBoundary(dates[0].date)} au ${formatWeekBoundary(dates.at(-1).date,true)}`;
 }
 function drawBoard(){
@@ -109,8 +110,8 @@ function guideItems(){return guide.filter(row=>fold(row[0]).includes(fold($('gui
 function drawGuide(){ $('guide').innerHTML=guideItems().map(([name,temp,time,note])=>`<article class="card"><h2 class="dish-title">${esc(name)}</h2>
   <span class="guide-value">${temp} °C · ${time} min</span><p>${esc(note)}</p></article>`).join('')||empty('Aucun aliment trouvé.'); }
 function refreshSms() {
-  const from = $('smsRange').value === 'remaining' ? formatDateToLocalIso(new Date()) : '';
-  $('smsPeriod').textContent = weekLabel(from || monday);
+  const dates = smsDates(formatDateToLocalIso(new Date()), $('smsRange').value);
+  $('smsPeriod').textContent = periodLabel(dates);
   const stored = state.settings.sms ?? defaultSms;
   const intro = $('smsIntro'), fin = $('smsFin');
   if (intro.value === intro.defaultValue && fin.value === fin.defaultValue) {
@@ -119,7 +120,7 @@ function refreshSms() {
   }
   const draft = {intro:intro.value,fin:fin.value};
   $('smsSave').disabled = mode === 'loading' || (draft.intro === stored.intro && draft.fin === stored.fin);
-  const text = mode === 'loading' ? '' : dinnerMessage(state,monday,from,draft);
+  const text = mode === 'loading' ? '' : dinnerMessage(state,dates,draft);
   if ($('smsText').value !== text) {
     $('smsText').value = text;
     $('smsFeedback').textContent = '';
@@ -136,7 +137,7 @@ function refreshSms() {
 function openSms() {
   openDialog('Exporter les dîners par SMS',`<div class="fields sms-export">
     <strong id="smsPeriod"></strong>
-    <label>Période <select id="smsRange"><option value="week">Toute la semaine</option><option value="remaining">À partir d’aujourd’hui (7 soirs)</option></select></label>
+    <label>Période <select id="smsRange"><option value="remaining">Reste de la semaine</option><option value="next">Semaine prochaine</option></select></label>
     <details><summary>Personnaliser le texte du SMS</summary>
       <div class="fields sms-model">
         <label>Avant les dîners<textarea id="smsIntro" rows="2"></textarea></label>

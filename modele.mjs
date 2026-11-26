@@ -36,16 +36,18 @@ export function getWeekDates(startDate) {
   });
 }
 
-// La période visible va de la veille à la même journée de la semaine suivante.
+function calendarWeek(monday) {
+  return getWeekDates(monday).map((date, index) => ({date, day:DAYS[index], week:monday}));
+}
+
+export function smsDates(reference, period = 'remaining') {
+  if (period === 'next') return calendarWeek(shiftMonday(reference, 1));
+  return calendarWeek(normalizeMondayDate(reference)).filter(row => row.date >= reference);
+}
+
 export function planningDates(reference, weekOffset = 0) {
-  const cursor = new Date(reference + 'T12:00:00');
-  cursor.setDate(cursor.getDate() + 7 * weekOffset - 1);
-  return Array.from({length:9}, () => {
-    const date = formatDateToLocalIso(cursor);
-    const day = DAYS[(cursor.getDay() + 6) % 7];
-    cursor.setDate(cursor.getDate() + 1);
-    return {date,day,week:normalizeMondayDate(date)};
-  });
+  if (weekOffset) return calendarWeek(shiftMonday(reference, weekOffset));
+  return [...smsDates(reference), ...smsDates(reference, 'next')];
 }
 
 export function formatDateFr(isoDate) {
@@ -95,16 +97,10 @@ export const defaultSms = Object.freeze({
 });
 export const validSms = value => typeof value?.intro === 'string' && typeof value?.fin === 'string';
 
-export function dinnerMessage(state, monday, fromDate = '', model = state.settings?.sms ?? defaultSms) {
+export function dinnerMessage(state, dates, model = state.settings?.sms ?? defaultSms) {
   const lines = [];
-  let week, days;
-  for (const date of getWeekDates(fromDate || monday)) {
-    const weekStart = normalizeMondayDate(date);
-    if (weekStart !== week) {
-      week = weekStart;
-      days = weekDays(state.weeks[week]);
-    }
-    const day = DAYS[(new Date(date + 'T12:00:00').getDay() + 6) % 7];
+  for (const {date, day, week} of dates) {
+    const days = weekDays(state.weeks[week]);
     const names = days[day].dinner.map(id => state.meals[id]?.name).filter(Boolean);
     if (names.length) lines.push(day + ' ' + date.slice(8) + '/' + date.slice(5,7) + ' : ' + names.join(' + '));
   }

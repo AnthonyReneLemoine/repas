@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
-import { backup, diff, readBackup, recipe, sampleState, shopping, weekDays, normalizeMondayDate, shiftMonday } from '../modele.mjs';
+import { backup, diff, readBackup, recipe, sampleState, shopping, weekDays, smsDates, normalizeMondayDate, shiftMonday } from '../modele.mjs';
 
 const monday='2026-11-16';
 test('les dîners historiques et les semaines à cheval sur deux années sont conservés',()=>{
@@ -68,21 +68,20 @@ test('les transactions Firestore simulées isolent les données et refusent une 
   }finally{hooks.deregister();}
 });
 
-test('le SMS du mercredi couvre les dîners de ce soir au mardi suivant inclus',async()=>{
-  const {dinnerMessage}=await import('../modele.mjs');
+test('les SMS séparent les dîners restants de ceux de la semaine prochaine',async()=>{
+  const {dinnerMessage,defaultSms}=await import('../modele.mjs');
   const s=sampleState(monday);
   s.weeks[monday].Mercredi.dinner=['tartines','inconnu','nouilles'];
   s.weeks[monday].Dimanche.dinner=['tartines'];
-  s.weeks['2026-11-23']=weekDays({Lundi:['tartines'],Mardi:['nouilles'],Mercredi:['tartines']});
-  const part=dinnerMessage(s,monday,'2026-11-18');
-  const introduction='Le chef Tony, Minou et Pelucho les commis, vous proposent à diner :';
-  assert.equal(part,introduction+'\n\nMercredi 18/11 : Tartines de chèvre chaud + Nouilles au brocoli et aux crevettes\nDimanche 22/11 : Tartines de chèvre chaud\nLundi 23/11 : Tartines de chèvre chaud\nMardi 24/11 : Nouilles au brocoli et aux crevettes\n\nBon appetit !');
-  assert.match(dinnerMessage(s,monday),/Lundi 16\/11/);
-  assert.equal(dinnerMessage(s,'2026-12-07','2026-11-18'),part);
-  assert.doesNotMatch(dinnerMessage(s,monday),/23\/11/);
-  assert.equal(dinnerMessage(s,monday,'2026-12-01'),'');
-  s.weeks[monday]={Jeudi:['nouilles']};
-  assert.match(dinnerMessage(s,monday),/Jeudi 19\/11/);
+  s.weeks['2026-11-23']={Lundi:['nouilles'],Dimanche:['tartines']};
+  const exportText=period=>dinnerMessage(s,smsDates('2026-11-18',period));
+  assert.equal(exportText('remaining'),[defaultSms.intro,
+    'Mercredi 18/11 : Tartines de chèvre chaud + Nouilles au brocoli et aux crevettes\nDimanche 22/11 : Tartines de chèvre chaud',
+    defaultSms.fin].join('\n\n'));
+  assert.equal(exportText('next'),[defaultSms.intro,
+    'Lundi 23/11 : Nouilles au brocoli et aux crevettes\nDimanche 29/11 : Tartines de chèvre chaud',
+    defaultSms.fin].join('\n\n'));
+  assert.equal(dinnerMessage(s,smsDates('2026-12-01','next')),'');
 });
 
 test('les petits-déjeuners historiques restent sauvegardés et sont exclus des courses et du SMS',async()=>{
@@ -94,7 +93,7 @@ test('les petits-déjeuners historiques restent sauvegardés et sont exclus des 
   assert.deepEqual(Object.keys(SLOTS),['lunch','dinner']);
   assert.deepEqual(readBackup(backup(s)).weeks[monday].Lundi.breakfast,['tartines']);
   assert.equal(shopping(s,monday,2).items.some(i=>i.name==='Pain'),false);
-  assert.equal(dinnerMessage(s,monday),'');
+  assert.equal(dinnerMessage(s,smsDates(monday)),'');
 });
 
 test('le modèle du SMS accepte deux textes personnels, des champs vides et les anciennes sauvegardes',async()=>{
@@ -105,21 +104,27 @@ test('le modèle du SMS accepte deux textes personnels, des champs vides et les 
   delete ancien.settings;
   assert.deepEqual(readBackup(ancien).settings,{});
   s.settings.sms={intro:'Ce soir\nà la maison',fin:'À table !'};
-  assert.equal(dinnerMessage(s,monday),'Ce soir\nà la maison\n\n'+ligne+'\n\nÀ table !');
+  assert.equal(dinnerMessage(s,smsDates(monday)),'Ce soir\nà la maison\n\n'+ligne+'\n\nÀ table !');
   assert.deepEqual(readBackup(backup(s)).settings,s.settings);
-  assert.equal(dinnerMessage(s,monday,'',{intro:'',fin:''}),ligne);
-  assert.equal(dinnerMessage(s,monday,'2026-11-19'),'');
+  assert.equal(dinnerMessage(s,smsDates(monday),{intro:'',fin:''}),ligne);
+  assert.equal(dinnerMessage(s,smsDates('2026-11-19')),'');
 });
 
-test('le planning glissant relie chaque date à sa semaine de stockage',async()=>{
+test('le planning couvre aujourd’hui jusqu’au dimanche de la semaine suivante',async()=>{
   const {planningDates}=await import('../modele.mjs');
-  const rows=planningDates('2026-11-18');
-  assert.equal(rows.length,9);
-  assert.deepEqual(rows[0],{date:'2026-11-17',day:'Mardi',week:'2026-11-16'});
-  assert.deepEqual(rows[8],{date:'2026-11-25',day:'Mercredi',week:'2026-11-23'});
-  assert.notEqual(rows[1].week,rows[8].week);
-  assert.deepEqual(planningDates('2026-11-18',1)[0],rows[7]);
-  const newYear=planningDates('2027-01-04');
-  assert.deepEqual(newYear[0],{date:'2027-01-03',day:'Dimanche',week:'2026-12-28'});
-  assert.deepEqual(newYear[8],{date:'2027-01-11',day:'Lundi',week:'2027-01-11'});
+  const rows=planningDates('2026-11-26');
+  assert.equal(rows.length,11);
+  assert.deepEqual(rows[0],{date:'2026-11-26',day:'Jeudi',week:'2026-11-23'});
+  assert.deepEqual(rows[4],{date:'2026-11-30',day:'Lundi',week:'2026-11-30'});
+  assert.equal(rows.at(-1).date,'2026-12-06');
+  assert.equal(planningDates('2026-11-23').length,14);
+  assert.deepEqual(planningDates('2026-11-26',1),rows.slice(4));
+  assert.equal(planningDates('2026-11-26',-1)[0].date,'2026-11-16');
+  const sunday='2026-12-27';
+  assert.equal(planningDates(sunday).length,8);
+  assert.deepEqual(smsDates(sunday).map(row=>row.date),[sunday]);
+  const next=smsDates(sunday,'next');
+  assert.equal(next.length,7);
+  assert.equal(next[0].date,'2026-12-28');
+  assert.deepEqual(next.at(-1),{date:'2027-01-03',day:'Dimanche',week:'2026-12-28'});
 });
