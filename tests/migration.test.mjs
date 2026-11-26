@@ -68,18 +68,19 @@ test('les transactions Firestore simulées isolent les données et refusent une 
   }finally{hooks.deregister();}
 });
 
-test('le SMS du mercredi couvre les dîners de mercredi à dimanche inclus',async()=>{
+test('le SMS du mercredi couvre les dîners de ce soir au mardi suivant inclus',async()=>{
   const {dinnerMessage}=await import('../modele.mjs');
   const s=sampleState(monday);
   s.weeks[monday].Mercredi.dinner=['tartines','inconnu','nouilles'];
   s.weeks[monday].Dimanche.dinner=['tartines'];
+  s.weeks['2026-11-23']=weekDays({Lundi:['tartines'],Mardi:['nouilles'],Mercredi:['tartines']});
   const part=dinnerMessage(s,monday,'2026-11-18');
   const introduction='Le chef Tony, Minou et Pelucho les commis, vous proposent à diner :';
-  assert.equal(part,introduction+'\n\nMercredi 18/11 : Tartines de chèvre chaud + Nouilles au brocoli et aux crevettes\nDimanche 22/11 : Tartines de chèvre chaud\n\nBon appetit !');
+  assert.equal(part,introduction+'\n\nMercredi 18/11 : Tartines de chèvre chaud + Nouilles au brocoli et aux crevettes\nDimanche 22/11 : Tartines de chèvre chaud\nLundi 23/11 : Tartines de chèvre chaud\nMardi 24/11 : Nouilles au brocoli et aux crevettes\n\nBon appetit !');
   assert.match(dinnerMessage(s,monday),/Lundi 16\/11/);
-  assert.equal(dinnerMessage(s,monday,'2026-11-22'),introduction+'\n\nDimanche 22/11 : Tartines de chèvre chaud\n\nBon appetit !');
-  assert.equal(dinnerMessage(s,monday,'2026-11-23'),'');
-  assert.equal(dinnerMessage(s,monday,'2026-11-13'),dinnerMessage(s,monday));
+  assert.equal(dinnerMessage(s,'2026-12-07','2026-11-18'),part);
+  assert.doesNotMatch(dinnerMessage(s,monday),/23\/11/);
+  assert.equal(dinnerMessage(s,monday,'2026-12-01'),'');
   s.weeks[monday]={Jeudi:['nouilles']};
   assert.match(dinnerMessage(s,monday),/Jeudi 19\/11/);
 });

@@ -52,8 +52,8 @@ async function change(edit) {
     }
   } finally {busy=false;}
 }
-function weekLabel() {
-  const dates=getWeekDates(monday);
+function weekLabel(startDate=monday) {
+  const dates=getWeekDates(startDate);
   return `Du ${formatWeekBoundary(dates[0])} au ${formatWeekBoundary(dates[6],true)}`;
 }
 const labels={planning:'Planning',recettes:'Recettes',courses:'Liste de courses',guide:'Guide Air Fryer'};
@@ -110,6 +110,7 @@ function drawGuide(){ $('guide').innerHTML=guideItems().map(([name,temp,time,not
   <span class="guide-value">${temp} °C · ${time} min</span><p>${esc(note)}</p></article>`).join('')||empty('Aucun aliment trouvé.'); }
 function refreshSms() {
   const from = $('smsRange').value === 'remaining' ? formatDateToLocalIso(new Date()) : '';
+  $('smsPeriod').textContent = weekLabel(from || monday);
   const stored = state.settings.sms ?? defaultSms;
   const intro = $('smsIntro'), fin = $('smsFin');
   if (intro.value === intro.defaultValue && fin.value === fin.defaultValue) {
@@ -134,8 +135,8 @@ function refreshSms() {
 }
 function openSms() {
   openDialog('Exporter les dîners par SMS',`<div class="fields sms-export">
-    <strong>${esc(weekLabel())}</strong>
-    <label>Période <select id="smsRange"><option value="week">Toute la semaine</option><option value="remaining">À partir d’aujourd’hui</option></select></label>
+    <strong id="smsPeriod"></strong>
+    <label>Période <select id="smsRange"><option value="week">Toute la semaine</option><option value="remaining">À partir d’aujourd’hui (7 soirs)</option></select></label>
     <details><summary>Personnaliser le texte du SMS</summary>
       <div class="fields sms-model">
         <label>Avant les dîners<textarea id="smsIntro" rows="2"></textarea></label>

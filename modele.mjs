@@ -27,8 +27,8 @@ export function shiftMonday(mondayIsoDate, weekOffset) {
   return formatDateToLocalIso(dateObj);
 }
 
-export function getWeekDates(mondayIsoDate) {
-  const base = new Date(`${sanitizeMondayDate(mondayIsoDate)}T12:00:00`);
+export function getWeekDates(startDate) {
+  const base = new Date(`${sanitizeMondayDate(startDate)}T12:00:00`);
   return DAYS.map((_, index) => {
     const next = new Date(base);
     next.setDate(base.getDate() + index);
@@ -96,13 +96,17 @@ export const defaultSms = Object.freeze({
 export const validSms = value => typeof value?.intro === 'string' && typeof value?.fin === 'string';
 
 export function dinnerMessage(state, monday, fromDate = '', model = state.settings?.sms ?? defaultSms) {
-  const days = weekDays(state.weeks[monday]);
-  const dates = getWeekDates(monday);
   const lines = [];
-  for (const [i,day] of DAYS.entries()) {
-    if (dates[i] < fromDate) continue;
+  let week, days;
+  for (const date of getWeekDates(fromDate || monday)) {
+    const weekStart = normalizeMondayDate(date);
+    if (weekStart !== week) {
+      week = weekStart;
+      days = weekDays(state.weeks[week]);
+    }
+    const day = DAYS[(new Date(date + 'T12:00:00').getDay() + 6) % 7];
     const names = days[day].dinner.map(id => state.meals[id]?.name).filter(Boolean);
-    if (names.length) lines.push(day + ' ' + dates[i].slice(8) + '/' + dates[i].slice(5,7) + ' : ' + names.join(' + '));
+    if (names.length) lines.push(day + ' ' + date.slice(8) + '/' + date.slice(5,7) + ' : ' + names.join(' + '));
   }
   if (!lines.length) return '';
   return [model.intro.trim(), lines.join('\n'), model.fin.trim()].filter(Boolean).join('\n\n');
