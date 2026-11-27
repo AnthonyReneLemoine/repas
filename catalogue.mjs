@@ -79,7 +79,7 @@ const selectionParFamille = {
     'Sirop de menthe', 'Café', 'Café décaféiné', 'Thé noir', 'Thé vert', 'Infusion de verveine', 'Chocolat chaud'
   ]
 };
-export const catalogueMarkers = ['catalogueV1','catalogueV2','catalogueV3','catalogueV4','catalogueV5'];
+export const catalogueMarkers = ['catalogueV1','catalogueV2','catalogueV3','catalogueV4','catalogueV5','catalogueV6'];
 export const catalogueMarker = catalogueMarkers.at(-1);
 export const familles = [];
 
@@ -197,3 +197,17 @@ addFamily('Pâtes italiennes',[
 addFamily('Œufs et produits frais',['Parmesan','Pecorino romano','Ricotta salata'],5);
 addFamily('Viandes et charcuteries',['Guanciale'],5);
 addFamily('Herbes et épices',['Piment séché'],5);
+
+
+addFamily('Poissons',[
+  'Aile de raie','Anchois','Hareng','Thon frais','Truite','Truite fumée',
+  'Saumon fumé','Haddock','Colin d’Alaska','Limande','Mulet'
+],6,'Française');
+addFamily('Épicerie et conserves',[
+  'Câpres','Olives noires','Moutarde à l’ancienne','Vinaigre de cidre','Vinaigre de vin blanc',
+  'Fumet de poisson','Court-bouillon','Filets d’anchois à l’huile','Tomates séchées',
+  'Maquereau en conserve','Vin blanc sec'
+],6,'Française');
+addFamily('Sauces',['Tapenade noire'],6,'Française');
+addFamily('Herbes et épices',['Cerfeuil','Sauge','Bouquet garni','Baies roses','Poivre blanc'],6,'Française');
+addFamily('Fruits de mer',['Bulots','Bigorneaux','Poulpe'],6,'Française');

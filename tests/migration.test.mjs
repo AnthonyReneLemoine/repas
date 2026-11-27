@@ -220,7 +220,7 @@ test('les pâtes et les recettes de sauces complètent un catalogue V4 sans écr
   s.meals.pesto=recipe({name:'Pesto au basilic',note:'Ma recette'});
   s.meals.sauce=recipe({kind:'ingredient',name:'Sauce arrabbiata',ingredients:[{name:'Sauce arrabbiata',qty:null,unit:''}]});
   const added=populateIngredients(s);
-  assert.ok(added.every(entry=>entry.version===5));
+  assert.ok(added.every(entry=>entry.version>=5));
   assert.equal(s.meals['ingredient-classique-spaghettis'],undefined);
   assert.equal(catalogue.get('spaghettis').famille,'Pâtes italiennes');
   assert.equal(s.meals['ingredient-classique-farfalle'].kind,'ingredient');
@@ -239,4 +239,20 @@ test('les pâtes et les recettes de sauces complètent un catalogue V4 sans écr
   const restored=readBackup(backup(s));
   assert.deepEqual(populateIngredients(restored),[]);
   assert.deepEqual(restored,s);
+});
+
+test('le complément poissonnerie et condiments respecte les ingrédients personnels et les anciennes suppressions',async()=>{
+  const {populateIngredients}=await import('../modele.mjs');
+  const {catalogue,ingredientKey}=await import('../catalogue.mjs');
+  const s=sampleState(monday);
+  s.settings={catalogueV1:true,catalogueV2:true,catalogueV3:true,catalogueV4:true,catalogueV5:true};
+  s.meals.perso=recipe({kind:'ingredient',name:'Capres',ingredients:[{name:'Capres',qty:2,unit:'c. à café'}]});
+  const added=populateIngredients(s);
+  assert.ok(added.length>0 && added.every(entry=>entry.version===6));
+  assert.equal(catalogue.get(ingredientKey('capres')).famille,'Épicerie et conserves');
+  assert.equal(s.meals['ingredient-classique-capres'],undefined);
+  assert.equal(s.meals.perso.ingredients[0].qty,2);
+  assert.equal(s.meals['ingredient-classique-aile-de-raie'].name,'Aile de raie');
+  assert.equal(s.meals['ingredient-classique-cabillaud'],undefined);
+  assert.deepEqual(populateIngredients(readBackup(backup(s))),[]);
 });
